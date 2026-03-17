@@ -1,18 +1,22 @@
 import { useState, useEffect } from "react";
-import { Shield, Check, X, Loader2, Search, ShoppingCart, Package, MessageSquare, Star, HelpCircle, Users, BarChart3 } from "lucide-react";
+import { Shield, Check, X, Loader2, Search, ShoppingCart, Package, MessageSquare, Star, HelpCircle, Users, BarChart3, Wrench } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
+// 🚀 Naye pages yahan add kiye gaye hain
 const PAGE_OPTIONS = [
   { key: "dashboard", label: "Dashboard", icon: BarChart3 },
   { key: "orders", label: "Orders", icon: ShoppingCart },
   { key: "products", label: "Products", icon: Package },
+  { key: "kit-builder", label: "Kit Builder", icon: Wrench }, // Naya
   { key: "messages", label: "Messages", icon: MessageSquare },
   { key: "testimonials", label: "Testimonials", icon: Star },
   { key: "faqs", label: "FAQs", icon: HelpCircle },
+  { key: "users", label: "Users", icon: Users }, // Naya
 ];
 
 interface AdminUser {
@@ -113,7 +117,7 @@ const AdminPermissions = () => {
         return a;
       }));
       
-      toast.success(hasPermission ? "Permission removed" : "Permission granted");
+      toast.success(hasPermission ? "Permission Revoked" : "Permission Granted");
     } catch (err: any) {
       toast.error("Failed to update permission");
     } finally {
@@ -140,7 +144,7 @@ const AdminPermissions = () => {
         return a;
       }));
       
-      toast.success("All permissions granted");
+      toast.success("All access granted to user");
     } catch (err) {
       toast.error("Failed to grant permissions");
     } finally {
@@ -160,7 +164,7 @@ const AdminPermissions = () => {
         return a;
       }));
       
-      toast.success("All permissions revoked");
+      toast.success("All access revoked from user");
     } catch (err) {
       toast.error("Failed to revoke permissions");
     } finally {
@@ -173,99 +177,119 @@ const AdminPermissions = () => {
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+    <div className="space-y-8 max-w-7xl mx-auto pb-12">
+      {/* Header Section */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-primary/10 pb-6">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Shield className="w-6 h-6 text-primary" />
-            Admin Permissions
+          <h1 className="text-2xl sm:text-3xl font-black flex items-center gap-3 italic uppercase tracking-tighter">
+            <Shield className="w-8 h-8 text-primary" />
+            Admin <span className="text-primary">Permissions</span>
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage which pages admins can access
+          <p className="text-xs sm:text-sm text-muted-foreground font-bold opacity-50 uppercase tracking-widest mt-1">
+            System Access Control Center
           </p>
         </div>
-      </div>
-
-      <div className="relative max-w-xs">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="Search admins..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="pl-10 bg-muted/30"
-        />
+        
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Search team members..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-10 h-11 bg-card/50 border-primary/20 rounded-xl shadow-sm"
+          />
+        </div>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <div className="flex items-center justify-center py-32">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <p className="text-xs font-black uppercase tracking-widest text-primary animate-pulse">Scanning Registry...</p>
+          </div>
         </div>
       ) : filteredAdmins.length === 0 ? (
-        <div className="text-center py-20 text-muted-foreground">
-          <Users className="w-12 h-12 mx-auto mb-4 opacity-30" />
-          <p>No admins found</p>
-          <p className="text-sm mt-1">Promote users to Admin role first</p>
+        <div className="text-center py-32 border-2 border-dashed border-border/40 rounded-3xl bg-card/20">
+          <Users className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-20" />
+          <p className="text-lg font-bold">No Admin Users Found</p>
+          <p className="text-sm text-muted-foreground mt-1">You need to promote standard users to 'Admin' role first.</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {filteredAdmins.map(admin => (
-            <div key={admin.user_id} className="p-4 rounded-xl border border-border/40 bg-card/50">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="font-semibold">{admin.full_name}</h3>
-                  <p className="text-xs text-muted-foreground font-mono">{admin.role}</p>
+            <div key={admin.user_id} className="p-5 md:p-6 rounded-2xl border-2 border-primary/5 bg-card/40 backdrop-blur-sm shadow-xl hover:border-primary/20 transition-all">
+              
+              {/* User Header */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-6 border-b border-border/30">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-black text-xl">
+                     {admin.full_name?.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black tracking-tight">{admin.full_name}</h3>
+                    <p className="text-[10px] text-muted-foreground font-bold tracking-widest uppercase mt-0.5 px-2 py-0.5 bg-muted rounded inline-block">{admin.role}</p>
+                  </div>
                 </div>
-                <div className="flex gap-2">
+                
+                <div className="flex gap-3">
                   <Button
                     size="sm"
-                    variant="outline"
                     onClick={() => grantAllPermissions(admin.user_id)}
                     disabled={saving === admin.user_id}
-                    className="text-xs"
+                    className="h-9 px-4 text-[10px] font-black uppercase tracking-wider bg-primary hover:bg-primary/90"
                   >
-                    Grant All
+                    Grant All Access
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => revokeAllPermissions(admin.user_id)}
                     disabled={saving === admin.user_id}
-                    className="text-xs text-destructive hover:text-destructive"
+                    className="h-9 px-4 text-[10px] font-black uppercase tracking-wider text-destructive border-destructive/20 hover:bg-destructive/10"
                   >
                     Revoke All
                   </Button>
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
-                {PAGE_OPTIONS.map(page => {
-                  const hasPermission = admin.permissions.includes(page.key);
-                  const isSaving = saving === `${admin.user_id}-${page.key}`;
-                  
-                  return (
-                    <button
-                      key={page.key}
-                      onClick={() => togglePermission(admin.user_id, page.key, hasPermission)}
-                      disabled={!!saving}
-                      className={`flex items-center gap-2 p-2.5 rounded-lg border text-sm transition-all ${
-                        hasPermission
-                          ? "bg-primary/10 border-primary/30 text-primary"
-                          : "bg-muted/20 border-border/30 text-muted-foreground hover:border-border/50"
-                      }`}
-                    >
-                      {isSaving ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : hasPermission ? (
-                        <Check className="w-4 h-4" />
-                      ) : (
-                        <X className="w-4 h-4 opacity-50" />
-                      )}
-                      <page.icon className="w-4 h-4" />
-                      <span className="truncate">{page.label}</span>
-                    </button>
-                  );
-                })}
+              {/* Permissions Grid */}
+              <div>
+                <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest block mb-4">Module Access Control</Label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {PAGE_OPTIONS.map(page => {
+                    const hasPermission = admin.permissions.includes(page.key);
+                    const isSaving = saving === `${admin.user_id}-${page.key}`;
+                    
+                    return (
+                      <button
+                        key={page.key}
+                        onClick={() => togglePermission(admin.user_id, page.key, hasPermission)}
+                        disabled={!!saving}
+                        className={`flex flex-col items-start gap-3 p-4 rounded-xl border-2 transition-all duration-200 ${
+                          hasPermission
+                            ? "bg-primary/5 border-primary/30 text-primary shadow-sm"
+                            : "bg-background/50 border-border/40 text-muted-foreground hover:border-primary/20 hover:bg-card"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <page.icon className={`w-5 h-5 ${hasPermission ? "text-primary" : "opacity-50"}`} />
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center border ${hasPermission ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted border-border'}`}>
+                            {isSaving ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : hasPermission ? (
+                              <Check className="w-3 h-3" />
+                            ) : (
+                              <X className="w-3 h-3 opacity-50" />
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-xs font-bold tracking-tight">{page.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+
             </div>
           ))}
         </div>

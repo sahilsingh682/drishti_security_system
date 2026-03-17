@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { BarChart3, ShoppingCart, Package, Users, MessageSquare, Menu, X, LogOut, Shield, User, Star, HelpCircle, Store, Moon, Sun, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { BarChart3, ShoppingCart, Package, Users, MessageSquare, Menu, X, LogOut, Shield, User, Star, HelpCircle, Store, Moon, Sun, ChevronsLeft, ChevronsRight, Wrench, Settings, Ticket } from "lucide-react"; // <-- Yahan Wrench add ho gaya
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/contexts/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
@@ -10,11 +10,15 @@ const ALL_NAV_ITEMS = [
   { label: "Dashboard", path: "/admin", icon: BarChart3, key: "dashboard" },
   { label: "Orders", path: "/admin/orders", icon: ShoppingCart, key: "orders" },
   { label: "Products", path: "/admin/products", icon: Package, key: "products" },
+  { label: "Kit Builder", path: "/admin/kit-builder", icon: Wrench, key: "kit-builder" }, // <-- Yahan Kit Builder ka Link aa gaya
   { label: "Messages", path: "/admin/messages", icon: MessageSquare, key: "messages" },
   { label: "Testimonials", path: "/admin/testimonials", icon: Star, key: "testimonials" },
   { label: "FAQs", path: "/admin/faqs", icon: HelpCircle, key: "faqs" },
   { label: "Users", path: "/admin/users", icon: Users, key: "users", superAdminOnly: true },
   { label: "Permissions", path: "/admin/permissions", icon: Shield, key: "permissions", superAdminOnly: true },
+  { label: "Coupons", path: "/admin/coupons", icon: Ticket, key: "coupons" },
+  { label: "Staff", path: "/admin/staff", icon: Users, key: "staff", superAdminOnly: true },
+  { label: "Settings", path: "/admin/settings", icon: Settings, key: "settings" },
 ];
 
 const AdminLayout = () => {

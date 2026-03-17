@@ -1,19 +1,67 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { ShoppingCart, Trash2, Plus, Minus, ArrowLeft, ShoppingBag, MessageCircle } from "lucide-react";
+import { ShoppingCart, Trash2, Plus, Minus, ArrowLeft, ShoppingBag, MessageCircle, Ticket, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useCart } from "@/contexts/CartContext";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { WhatsAppCheckoutModal } from "@/components/WhatsAppCheckoutModal";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const Cart = () => {
   const { cart, removeFromCart, updateQty, clearCart, cartTotal, cartCount } = useCart();
   const [showCheckout, setShowCheckout] = useState(false);
+  
+  // 🎟️ PROMO CODE STATES
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
+  const [isValidating, setIsValidating] = useState(false);
+
+  // Apply Coupon Logic
+  const handleApplyCoupon = async () => {
+    if (!couponInput.trim()) return;
+    
+    setIsValidating(true);
+    try {
+      const { data, error } = await supabase
+        .from("coupons")
+        .select("*")
+        .eq("code", couponInput.trim().toUpperCase())
+        .eq("is_active", true)
+        .single();
+
+      if (error || !data) {
+        toast.error("Invalid or expired coupon code");
+        setAppliedCoupon(null);
+      } else if (cartTotal < data.min_order_amount) {
+        toast.error(`Minimum order of ₹${data.min_order_amount} required for this coupon`);
+        setAppliedCoupon(null);
+      } else {
+        setAppliedCoupon(data);
+        toast.success(`Coupon "${data.code}" applied!`);
+      }
+    } catch (err) {
+      toast.error("Something went wrong");
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  // Calculation with Discount
+  const discountAmount = appliedCoupon 
+    ? (appliedCoupon.discount_type === 'percentage' 
+        ? (cartTotal * appliedCoupon.discount_value) / 100 
+        : appliedCoupon.discount_value)
+    : 0;
+  
+  const finalTotal = Math.max(0, cartTotal - discountAmount);
 
   const cartProduct = cart.length > 0 ? {
     id: "cart-order",
-    name: cart.map(i => `${i.name} x${i.quantity}`).join(", "),
-    price: cartTotal,
+    name: cart.map(i => `${i.name} x${i.quantity}`).join(", ") + 
+          (appliedCoupon ? ` [Applied Coupon: ${appliedCoupon.code}]` : ""),
+    price: finalTotal,
   } : null;
 
   return (
@@ -71,19 +119,53 @@ const Cart = () => {
               ))}
             </AnimatePresence>
 
+            {/* 🎟️ NEW PROMO CODE SECTION */}
+            <div className="p-4 rounded-2xl border border-dashed border-primary/40 bg-primary/5 flex gap-2">
+              <div className="relative flex-1">
+                <Ticket className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary opacity-60" />
+                <Input 
+                  placeholder="Enter Promo Code" 
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value)}
+                  className="pl-10 h-10 bg-background border-none ring-1 ring-border/50 focus-visible:ring-primary/50 uppercase font-mono"
+                  disabled={!!appliedCoupon}
+                />
+              </div>
+              {appliedCoupon ? (
+                <Button variant="ghost" onClick={() => {setAppliedCoupon(null); setCouponInput("")}} className="text-destructive h-10 px-3">
+                  <X className="w-4 h-4" />
+                </Button>
+              ) : (
+                <Button onClick={handleApplyCoupon} disabled={isValidating || !couponInput} className="bg-primary hover:bg-primary/90 text-primary-foreground h-10 px-6 font-bold">
+                  {isValidating ? <Loader2 className="w-4 h-4 animate-spin" /> : "Apply"}
+                </Button>
+              )}
+            </div>
+
             {/* Summary */}
             <motion.div layout className="p-5 rounded-2xl border border-primary/20 bg-primary/5 space-y-3">
               <div className="flex justify-between text-sm text-muted-foreground">
                 <span>Subtotal ({cartCount} items)</span>
                 <span>₹{cartTotal.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between text-lg font-bold text-foreground">
+              
+              {appliedCoupon && (
+                <div className="flex justify-between text-sm text-green-500 font-medium">
+                  <span className="flex items-center gap-1.5"><Ticket className="w-3.5 h-3.5" /> Discount ({appliedCoupon.code})</span>
+                  <span>- ₹{discountAmount.toLocaleString()}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between text-lg font-bold text-foreground pt-2 border-t border-border/20">
                 <span>Total</span>
-                <span className="text-primary">₹{cartTotal.toLocaleString()}</span>
+                <div className="text-right">
+                    <span className="text-primary block">₹{finalTotal.toLocaleString()}</span>
+                    {appliedCoupon && <span className="text-[10px] text-muted-foreground line-through font-normal block">₹{cartTotal.toLocaleString()}</span>}
+                </div>
               </div>
               <div className="flex gap-2 pt-2">
-                <Button variant="outline" className="flex-1 rounded-xl border-border/40" onClick={clearCart}>Clear Cart</Button>
-                <Button className="flex-1 rounded-xl bg-primary text-primary-foreground" onClick={() => setShowCheckout(true)}>
+                <Button variant="outline" className="flex-1 rounded-xl border-border/40" onClick={() => {clearCart(); setAppliedCoupon(null);}}>Clear Cart</Button>
+                <Button className="flex-1 rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 font-bold" onClick={() => setShowCheckout(true)}>
                   <MessageCircle className="w-4 h-4 mr-2" /> Order via WhatsApp
                 </Button>
               </div>
@@ -97,4 +179,4 @@ const Cart = () => {
   );
 };
 
-export default Cart;
+export default Cart; 

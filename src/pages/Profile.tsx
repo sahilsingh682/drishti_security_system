@@ -73,11 +73,25 @@ const Profile = () => {
     try {
       const ext = file.name.split(".").pop();
       const path = `${user.id}/avatar.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+      
+      // Upload with Upsert (overwrite old photo)
+      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { 
+        upsert: true,
+        cacheControl: '3600'
+      });
       if (uploadError) throw uploadError;
+      
       const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
-      const { error: updateError } = await supabase.from("profiles").update({ avatar_url: urlData.publicUrl }).eq("user_id", user.id);
+      
+      // Cache-Buster: Yeh timestamp add karne se nayi photo turant screen par dikhti hai!
+      const timestampedUrl = `${urlData.publicUrl}?t=${new Date().getTime()}`;
+      
+      const { error: updateError } = await supabase.from("profiles").update({ 
+        avatar_url: timestampedUrl 
+      }).eq("user_id", user.id);
+      
       if (updateError) throw updateError;
+      
       await refreshProfile();
       toast.success("Avatar updated!");
     } catch (err: any) {
@@ -86,7 +100,6 @@ const Profile = () => {
       setUploading(false);
     }
   };
-
 
   return (
     <div className="min-h-screen bg-background grid-bg pt-20 pb-12 px-4">

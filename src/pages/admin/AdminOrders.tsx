@@ -1,363 +1,389 @@
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { ShoppingCart, Phone, MapPin, CreditCard, Wrench, Plus, FileText, Package, Trash2, Eye, EyeOff } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { motion, AnimatePresence } from "framer-motion";
+import { 
+  ShoppingBag, Phone, MapPin, Wrench, Package, 
+  CreditCard, ShieldCheck, Search, ChevronDown, ChevronUp, 
+  PlayCircle, CheckCircle2, Calendar, XCircle, User,
+  ClipboardList, FileText, Printer, ArrowLeft
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
 
-const paymentColors: Record<string, string> = {
-  pending: "bg-yellow-500/15 text-yellow-500 border-yellow-500/30",
-  paid: "bg-green-500/15 text-green-500 border-green-500/30",
-  failed: "bg-destructive/15 text-destructive border-destructive/30",
-  refunded: "bg-secondary/15 text-secondary border-secondary/30",
-};
-
-const installColors: Record<string, string> = {
-  pending: "bg-yellow-500/15 text-yellow-500 border-yellow-500/30",
-  scheduled: "bg-secondary/15 text-secondary border-secondary/30",
-  in_progress: "bg-primary/15 text-primary border-primary/30",
-  completed: "bg-green-500/15 text-green-500 border-green-500/30",
-  cancelled: "bg-destructive/15 text-destructive border-destructive/30",
-};
-
-const AdminOrders = () => {
+export default function AdminOrders() {
   const [orders, setOrders] = useState<any[]>([]);
+  const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [manualOpen, setManualOpen] = useState(false);
-  const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
-  const [filter, setFilter] = useState<string>("all");
-  const [manualForm, setManualForm] = useState({
-    customer_name: "",
-    phone: "",
-    total_amount: "",
-    items_text: "",
-    payment_status: "pending",
-    install_status: "pending",
-    address_houseNo: "",
-    address_society: "",
-    address_city: "",
-    address_state: "",
-    address_pincode: "",
-    address_landmark: "",
-  });
+  const [searchTerm, setSearchTerm] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [customWarrantyFields, setCustomWarrantyFields] = useState<Record<string, boolean>>({});
+  
+  const [invoiceOrder, setInvoiceOrder] = useState<any>(null);
 
-  const fetchOrders = async () => {
-    const { data } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
-    setOrders(data || []);
-    setLoading(false);
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const { data: ordersData } = await supabase
+        .from("orders")
+        .select(`*, assigned_technician:staff(name)`)
+        .order("created_at", { ascending: false });
+      const { data: staffData } = await supabase.from("staff").select("*").eq("is_active", true);
+      setOrders(ordersData || []);
+      setStaff(staffData || []);
+    } catch (err: any) {
+      toast.error("Sync Error");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { fetchOrders(); }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  const updateStatus = async (id: string, field: string, value: string) => {
-    const { error } = await supabase.from("orders").update({ [field]: value }).eq("id", id);
-    if (error) { toast.error("Failed to update"); return; }
-    toast.success("Status updated");
-    fetchOrders();
+  const renderAddress = (address: any) => {
+    if (!address) return "No address provided";
+    if (typeof address === 'string') return address;
+    const parts = [address.houseNo, address.society, address.area, address.landmark ? `(Near ${address.landmark})` : null, address.city, address.pincode].filter(Boolean);
+    return Array.from(new Set(parts)).join(", ");
   };
 
-  const deleteOrder = async (id: string) => {
-    if (!confirm("Delete this order permanently?")) return;
-    const { error } = await supabase.from("orders").delete().eq("id", id);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Order deleted");
-    fetchOrders();
+  const updateOrder = async (orderId: string, updates: any) => {
+    if (updates.installation_type === 'self') {
+      updates.assigned_technician_id = null;
+    }
+    const { error } = await supabase.from("orders").update(updates).eq("id", orderId);
+    if (!error) {
+      toast.success("System Updated Successfully");
+      fetchData();
+    }
   };
 
-  const generateInvoice = (order: any) => {
-    const items = Array.isArray(order.items) ? order.items : [];
-    const addr = order.delivery_address as any;
-    const invoiceText = `
-══════════════════════════════════════
-        DRISHTI SECURITY SYSTEMS
-            TAX INVOICE
-══════════════════════════════════════
-Invoice #: ${order.id.slice(0, 8).toUpperCase()}
-Date: ${new Date(order.created_at).toLocaleDateString("en-IN")}
-
-Customer: ${order.customer_name}
-Phone: ${order.phone || "N/A"}
-Address: ${addr ? `${addr.houseNo || ""} ${addr.society || ""}, ${addr.area || ""}, ${addr.city || ""}, ${addr.state || ""} - ${addr.pincode || ""}` : "N/A"}
-
-──────────────────────────────────────
-ITEMS:
-${items.length > 0 ? items.map((item: any, i: number) => `  ${i + 1}. ${item.name || item} ${item.price ? `- ₹${item.price}` : ""}`).join("\n") : "  Walk-in / Manual Order"}
-
-──────────────────────────────────────
-TOTAL: ₹${Number(order.total_amount).toLocaleString("en-IN")}
-Payment: ${order.payment_status.toUpperCase()}
-Installation: ${order.install_status.toUpperCase()}
-══════════════════════════════════════
-    `.trim();
-
-    const blob = new Blob([invoiceText], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `invoice-${order.id.slice(0, 8)}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Invoice downloaded");
+  const updateItemData = (order: any, itemIdx: number, field: string, value: any) => {
+    let items = [...(typeof order.items === 'string' ? JSON.parse(order.items) : order.items)];
+    items[itemIdx] = { ...items[itemIdx], [field]: value };
+    updateOrder(order.id, { items: items });
   };
 
-  const addManualOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const items = manualForm.items_text
-      ? manualForm.items_text.split("\n").filter(Boolean).map(line => {
-          const parts = line.split("-").map(s => s.trim());
-          return { name: parts[0], price: parts[1] ? Number(parts[1]) : 0 };
-        })
-      : [];
+  const toggleExpand = (id: string) => setExpandedId(expandedId === id ? null : id);
 
-    const delivery_address = manualForm.address_society
-      ? {
-          houseNo: manualForm.address_houseNo,
-          society: manualForm.address_society,
-          city: manualForm.address_city,
-          state: manualForm.address_state,
-          pincode: manualForm.address_pincode,
-          landmark: manualForm.address_landmark,
-        }
-      : null;
+  const filteredOrders = orders.filter(order => 
+    (order.customer_name || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
+    order.id.includes(searchTerm)
+  );
 
-    const { error } = await supabase.from("orders").insert({
-      customer_name: manualForm.customer_name,
-      phone: manualForm.phone || null,
-      total_amount: Number(manualForm.total_amount) || 0,
-      items,
-      delivery_address,
-      payment_status: manualForm.payment_status,
-      install_status: manualForm.install_status,
-    });
-    if (error) { toast.error(error.message); return; }
-    toast.success("Order added");
-    setManualOpen(false);
-    setManualForm({ customer_name: "", phone: "", total_amount: "", items_text: "", payment_status: "pending", install_status: "pending", address_houseNo: "", address_society: "", address_city: "", address_state: "", address_pincode: "", address_landmark: "" });
-    fetchOrders();
-  };
+  // 🖨️ INVOICE RENDERER (With GST Calculation)
+  if (invoiceOrder) {
+    let invoiceItems = [];
+    try { invoiceItems = typeof invoiceOrder.items === 'string' ? JSON.parse(invoiceOrder.items) : (invoiceOrder.items || []); } catch (e) { invoiceItems = []; }
+    
+    // 🧮 GST Calculation (18% Inclusive Logic)
+    const grandTotal = Number(invoiceOrder.total_amount) || 0;
+    const baseAmount = grandTotal / 1.18; // Reverse calculate base price
+    const totalGst = grandTotal - baseAmount;
+    const cgst = totalGst / 2;
+    const sgst = totalGst / 2;
 
-  const filtered = filter === "all" ? orders : orders.filter(o => o.payment_status === filter || o.install_status === filter);
+    return (
+      <div className="fixed inset-0 z-50 bg-white overflow-auto print:p-0 p-4 sm:p-8">
+        <div className="max-w-4xl mx-auto mb-8 flex justify-between items-center print:hidden bg-muted/50 p-4 rounded-2xl border border-border/50">
+           <Button variant="outline" onClick={() => setInvoiceOrder(null)} className="rounded-full font-bold">
+             <ArrowLeft className="w-4 h-4 mr-2" /> Back to Dashboard
+           </Button>
+           <Button onClick={() => window.print()} className="rounded-full font-black bg-primary px-8 shadow-lg hover:scale-105 transition-all">
+             <Printer className="w-4 h-4 mr-2" /> Save as PDF / Print
+           </Button>
+        </div>
 
-  const stats = {
-    total: orders.length,
-    paid: orders.filter(o => o.payment_status === "paid").length,
-    pending: orders.filter(o => o.payment_status === "pending").length,
-    completed: orders.filter(o => o.install_status === "completed").length,
-    revenue: orders.filter(o => o.payment_status === "paid").reduce((s, o) => s + Number(o.total_amount), 0),
-  };
+        {/* 📄 THE ACTUAL INVOICE A4 SHEET */}
+        <div className="max-w-4xl mx-auto bg-white text-black p-8 sm:p-12 border border-gray-200 shadow-2xl print:shadow-none print:border-none rounded-xl print:rounded-none">
+           
+           {/* Invoice Header */}
+           <div className="flex justify-between items-start border-b-2 border-gray-800 pb-8 mb-8">
+              <div>
+                 <h1 className="text-4xl font-black text-orange-600 tracking-tighter uppercase italic leading-none">Drishti</h1>
+                 <p className="text-lg font-black tracking-widest text-gray-800 mt-1 uppercase">Security System</p>
+                 <div className="mt-4 text-xs font-medium text-gray-500 space-y-1">
+                    <p>Panipat, Haryana, India</p>
+                    <p>Phone: +91 8787225596</p>
+                    <p>Email: support@drishtisecurity.com</p>
+                    <p className="font-bold text-gray-800 pt-1">GSTIN: 06DRISH715E1Z5</p>
+                 </div>
+              </div>
+              <div className="text-right">
+                 <h2 className="text-4xl font-black text-gray-200 uppercase tracking-widest">Tax Invoice</h2>
+                 <p className="text-sm font-bold text-gray-800 mt-2">INV-{invoiceOrder.id.slice(0, 8).toUpperCase()}</p>
+                 <p className="text-xs font-semibold text-gray-500 mt-1">Date: {new Date(invoiceOrder.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                 <div className="mt-4 inline-block px-3 py-1 bg-gray-100 rounded text-xs font-black text-gray-600 uppercase">
+                    Status: {invoiceOrder.payment_status === 'paid' ? 'PAID / COMPLETED' : 'PAYMENT PENDING'}
+                 </div>
+              </div>
+           </div>
+
+           {/* Customer Details */}
+           <div className="grid grid-cols-2 gap-8 mb-8">
+              <div>
+                 <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">Billed To:</p>
+                 <h3 className="text-lg font-black text-gray-800">{invoiceOrder.customer_name}</h3>
+                 <p className="text-sm font-medium text-gray-600 mt-1">{invoiceOrder.phone}</p>
+                 <p className="text-xs font-medium text-gray-500 mt-1 max-w-[250px] leading-relaxed">{renderAddress(invoiceOrder.delivery_address)}</p>
+                 <p className="text-xs font-bold text-gray-600 mt-2">State: Haryana (06)</p>
+              </div>
+              <div className="text-right">
+                 <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">Installation Mode:</p>
+                 <p className="text-sm font-bold text-gray-800 uppercase">{invoiceOrder.installation_type === 'technician' ? 'Drishti Expert Team' : 'Customer Self Installation'}</p>
+                 {invoiceOrder.payment_method && invoiceOrder.payment_status === 'paid' && (
+                   <>
+                     <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mt-4 mb-1">Payment Method:</p>
+                     <p className="text-sm font-bold text-gray-800 uppercase">{invoiceOrder.payment_method}</p>
+                   </>
+                 )}
+              </div>
+           </div>
+
+           {/* Itemized Table */}
+           <table className="w-full text-left mb-8 border-collapse">
+              <thead>
+                 <tr className="bg-gray-100 text-gray-800 text-[10px] uppercase font-black tracking-widest">
+                    <th className="py-3 px-4 rounded-l-lg">Description & Serial No.</th>
+                    <th className="py-3 px-4 text-center">Warranty</th>
+                    <th className="py-3 px-4 text-center">Qty</th>
+                    <th className="py-3 px-4 text-right">Unit Price</th>
+                    <th className="py-3 px-4 text-right rounded-r-lg">Total</th>
+                 </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                 {invoiceItems.map((item: any, idx: number) => {
+                    const price = parseFloat(item.price) || 0;
+                    const qty = item.quantity || 1;
+                    const total = price * qty;
+                    return (
+                      <tr key={idx} className="text-sm font-medium text-gray-700">
+                         <td className="py-4 px-4">
+                            <p className="font-bold text-gray-900">{item.name}</p>
+                            {item.serial_number && <p className="text-[10px] font-mono text-gray-500 mt-1">S/N: {item.serial_number}</p>}
+                         </td>
+                         <td className="py-4 px-4 text-center text-xs">{item.warranty_months ? `${item.warranty_months} Months` : 'N/A'}</td>
+                         <td className="py-4 px-4 text-center font-bold">{qty}</td>
+                         <td className="py-4 px-4 text-right">₹{price.toLocaleString('en-IN')}</td>
+                         <td className="py-4 px-4 text-right font-black text-gray-900">₹{total.toLocaleString('en-IN')}</td>
+                      </tr>
+                    )
+                 })}
+              </tbody>
+           </table>
+
+           {/* GST Total Calculation */}
+           <div className="flex justify-end border-t-2 border-gray-800 pt-6 mb-12">
+              <div className="w-72 space-y-3">
+                 <div className="flex justify-between text-sm font-bold text-gray-600">
+                    <span>Taxable Value:</span>
+                    <span>₹{baseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                 </div>
+                 <div className="flex justify-between text-sm font-bold text-gray-600">
+                    <span>CGST @ 9%:</span>
+                    <span>₹{cgst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                 </div>
+                 <div className="flex justify-between text-sm font-bold text-gray-600">
+                    <span>SGST @ 9%:</span>
+                    <span>₹{sgst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                 </div>
+                 <div className="flex justify-between text-xl font-black text-orange-600 pt-4 border-t border-gray-200 mt-2">
+                    <span>Grand Total:</span>
+                    <span>₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                 </div>
+              </div>
+           </div>
+
+           {/* Footer / Terms */}
+           <div className="text-[10px] font-medium text-gray-400 leading-relaxed border-t border-gray-100 pt-6">
+              <p className="font-bold text-gray-600 mb-1">Terms & Conditions:</p>
+              <p>1. Warranty is strictly applicable against manufacturing defects only as per the specified months. Physical damage, burns, or electrical surges are not covered.</p>
+              <p>2. Please retain this tax invoice and product serial numbers for any warranty claims. You can verify your warranty status 24/7 on our official website.</p>
+              <p className="mt-6 text-center font-black tracking-widest uppercase text-gray-300">Thank you for choosing Drishti Security</p>
+           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 💻 MAIN ADMIN DASHBOARD UI
+  if (loading) return <div className="p-20 text-center font-black text-primary animate-pulse tracking-widest uppercase">Syncing Dashboard...</div>;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><ShoppingCart className="w-6 h-6 text-primary" /> Orders</h1>
-          <p className="text-sm text-muted-foreground mt-1">{orders.length} total orders · ₹{stats.revenue.toLocaleString("en-IN")} revenue</p>
+    <div className="space-y-4 max-w-6xl mx-auto px-2 pb-24 pt-4 print:hidden">
+      <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-md pb-4 pt-2 border-b flex gap-3 items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input placeholder="Search Customer..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 h-11 rounded-xl bg-card border-primary/20" />
         </div>
-        <Dialog open={manualOpen} onOpenChange={setManualOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground"><Plus className="w-4 h-4 mr-1" /> Add Manual Order</Button>
-          </DialogTrigger>
-          <DialogContent className="glass-card border-border/40 max-h-[85vh] overflow-y-auto">
-            <DialogHeader><DialogTitle>Add Manual Order</DialogTitle></DialogHeader>
-            <form onSubmit={addManualOrder} className="space-y-3">
-              <div><Label>Customer Name *</Label><Input required value={manualForm.customer_name} onChange={e => setManualForm({ ...manualForm, customer_name: e.target.value })} className="bg-muted/30" /></div>
-              <div><Label>Phone</Label><Input value={manualForm.phone} onChange={e => setManualForm({ ...manualForm, phone: e.target.value })} className="bg-muted/30" placeholder="+91 98765 43210" /></div>
-              <div><Label>Total Amount (₹) *</Label><Input type="number" required value={manualForm.total_amount} onChange={e => setManualForm({ ...manualForm, total_amount: e.target.value })} className="bg-muted/30" /></div>
-              <div>
-                <Label>Products / Items <span className="text-muted-foreground text-xs">(one per line: Name - Price)</span></Label>
-                <Textarea rows={3} placeholder={"Hikvision 2MP Dome - 1500\nDVR 4CH - 3500"} value={manualForm.items_text} onChange={e => setManualForm({ ...manualForm, items_text: e.target.value })} className="bg-muted/30 font-mono text-xs" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Payment Status</Label>
-                  <Select value={manualForm.payment_status} onValueChange={v => setManualForm({ ...manualForm, payment_status: v })}>
-                    <SelectTrigger className="bg-muted/30"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="paid">Paid</SelectItem>
-                      <SelectItem value="failed">Failed</SelectItem>
-                      <SelectItem value="refunded">Refunded</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Installation Status</Label>
-                  <Select value={manualForm.install_status} onValueChange={v => setManualForm({ ...manualForm, install_status: v })}>
-                    <SelectTrigger className="bg-muted/30"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="scheduled">Scheduled</SelectItem>
-                      <SelectItem value="in_progress">In Progress</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                      <SelectItem value="cancelled">Cancelled</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="pt-2 border-t border-border/30">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Delivery Address (optional)</Label>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <Input placeholder="House / Flat No." value={manualForm.address_houseNo} onChange={e => setManualForm({ ...manualForm, address_houseNo: e.target.value })} className="bg-muted/30 text-sm" />
-                  <Input placeholder="Society / Area" value={manualForm.address_society} onChange={e => setManualForm({ ...manualForm, address_society: e.target.value })} className="bg-muted/30 text-sm" />
-                  <Input placeholder="Landmark" value={manualForm.address_landmark} onChange={e => setManualForm({ ...manualForm, address_landmark: e.target.value })} className="bg-muted/30 text-sm" />
-                  <Input placeholder="City" value={manualForm.address_city} onChange={e => setManualForm({ ...manualForm, address_city: e.target.value })} className="bg-muted/30 text-sm" />
-                  <Input placeholder="State" value={manualForm.address_state} onChange={e => setManualForm({ ...manualForm, address_state: e.target.value })} className="bg-muted/30 text-sm" />
-                  <Input placeholder="Pincode" value={manualForm.address_pincode} onChange={e => setManualForm({ ...manualForm, address_pincode: e.target.value })} className="bg-muted/30 text-sm" />
-                </div>
-              </div>
-              <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">Add Order</Button>
-            </form>
-          </DialogContent>
-        </Dialog>
       </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: "Total", value: stats.total, color: "text-foreground" },
-          { label: "Paid", value: stats.paid, color: "text-green-500" },
-          { label: "Pending", value: stats.pending, color: "text-yellow-500" },
-          { label: "Installed", value: stats.completed, color: "text-secondary" },
-        ].map(s => (
-          <div key={s.label} className="glass-card p-3 text-center">
-            <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
-            <div className="text-xs text-muted-foreground">{s.label}</div>
-          </div>
-        ))}
-      </div>
+      <div className="space-y-3">
+        {filteredOrders.map((order) => {
+          const isExp = expandedId === order.id;
+          const isPaid = order.payment_status === 'paid';
+          const isTechRequired = (order.installation_type || 'technician') === 'technician';
+          let items = [];
+          try { items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []); } catch (e) { items = []; }
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2">
-        {[
-          { value: "all", label: "All" },
-          { value: "pending", label: "Pending" },
-          { value: "paid", label: "Paid" },
-          { value: "completed", label: "Installed" },
-          { value: "scheduled", label: "Scheduled" },
-        ].map(f => (
-          <button
-            key={f.value}
-            onClick={() => setFilter(f.value)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filter === f.value ? "bg-primary/20 text-primary border border-primary/30" : "bg-muted/30 text-muted-foreground hover:text-foreground border border-transparent"}`}
-            data-clickable
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Orders List */}
-      {loading ? (
-        <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" /></div>
-      ) : filtered.length === 0 ? (
-        <div className="glass-card p-12 text-center text-muted-foreground">No orders found</div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((order, i) => {
-            const addr = order.delivery_address as any;
-            const items = Array.isArray(order.items) ? order.items : [];
-            const isExpanded = expandedOrder === order.id;
-            return (
-              <motion.div key={order.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }} className="glass-card p-4 hover:border-primary/20 transition-colors">
-                {/* Top row */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => setExpandedOrder(isExpanded ? null : order.id)} className="text-muted-foreground hover:text-foreground" data-clickable>
-                      {isExpanded ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                    <div>
-                      <div className="font-semibold">{order.customer_name}</div>
-                      <div className="text-xs text-muted-foreground font-mono">#{order.id.slice(0, 8)} · {new Date(order.created_at).toLocaleDateString("en-IN")}</div>
-                    </div>
+          return (
+            <motion.div layout key={order.id} className={`group border rounded-2xl transition-all overflow-hidden bg-card/50 ${isExp ? 'border-primary ring-2 ring-primary/5 shadow-xl' : 'border-border/40'}`}>
+              
+              <div onClick={() => toggleExpand(order.id)} className="p-3 md:p-4 cursor-pointer flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${isPaid ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-500'}`}>
+                    {order.customer_name?.charAt(0)}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-xl font-bold text-primary">₹{Number(order.total_amount).toLocaleString("en-IN")}</div>
-                    <div className="flex gap-1.5">
-                      <Badge variant="outline" className={`text-[10px] ${paymentColors[order.payment_status] || ""}`}>{order.payment_status}</Badge>
-                      <Badge variant="outline" className={`text-[10px] ${installColors[order.install_status] || ""}`}>{order.install_status}</Badge>
+                  <div className="truncate">
+                    <h3 className="font-bold text-sm md:text-base truncate leading-tight">{order.customer_name}</h3>
+                    <div className="flex items-center gap-2 mt-0.5">
+                       <span className="text-[10px] font-mono font-bold opacity-40">#{order.id.slice(0,6)}</span>
+                       <span className="text-[9px] bg-primary/5 text-primary px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">{order.install_status}</span>
                     </div>
                   </div>
                 </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <p className="text-xs font-black text-primary">₹{Number(order.total_amount || 0).toLocaleString('en-IN')}</p>
+                    <p className="text-[9px] font-bold opacity-40 uppercase">{new Date(order.created_at).toLocaleDateString()}</p>
+                  </div>
+                  <div className={`p-1.5 rounded-full transition-colors ${isExp ? 'bg-primary text-white' : 'bg-muted opacity-40'}`}>
+                    {isExp ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </div>
+                </div>
+              </div>
 
-                {/* Contact info */}
-                {order.phone && <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1"><Phone className="w-3 h-3" />{order.phone}</div>}
-                {addr && <div className="flex items-start gap-2 text-sm text-muted-foreground mb-2"><MapPin className="w-3 h-3 mt-0.5" /><span>{[addr.houseNo, addr.society, addr.area, addr.landmark, addr.city, addr.state, addr.pincode].filter(Boolean).join(", ")}</span></div>}
-
-                {/* Expanded: items + actions */}
-                {isExpanded && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mt-3 pt-3 border-t border-border/30 space-y-3">
-                    {/* Items */}
-                    {items.length > 0 && (
-                      <div>
-                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1"><Package className="w-3 h-3" /> Products</div>
-                        <div className="space-y-1">
-                          {items.map((item: any, idx: number) => (
-                            <div key={idx} className="flex justify-between text-sm px-2 py-1 rounded bg-muted/20">
-                              <span>{typeof item === "string" ? item : item.name || `Item ${idx + 1}`}</span>
-                              {item.price && <span className="text-primary font-mono">₹{Number(item.price).toLocaleString("en-IN")}</span>}
-                            </div>
-                          ))}
+              <AnimatePresence>
+                {isExp && (
+                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="border-t border-border/20 bg-primary/[0.01]">
+                    <div className="p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                      
+                      <div className="lg:col-span-3 space-y-5">
+                        <div className="space-y-4">
+                           <div className="space-y-1">
+                              <Label className="text-[9px] uppercase font-black opacity-40 flex items-center gap-1.5"><Phone className="w-3 h-3" /> Contact</Label>
+                              <a href={`tel:${order.phone}`} className="text-sm font-black block text-primary">{order.phone}</a>
+                           </div>
+                           <div className="space-y-2">
+                              <Label className="text-[9px] uppercase font-black opacity-40">Payment</Label>
+                              <div className="flex flex-col gap-2">
+                                <Select value={order.payment_status} onValueChange={(val) => updateOrder(order.id, { payment_status: val })}>
+                                  <SelectTrigger className={`h-9 text-[10px] font-bold ${isPaid ? 'bg-green-500/10 text-green-600 border-green-500/20' : 'bg-orange-500/10 text-orange-600 border-orange-500/20'}`}><SelectValue /></SelectTrigger>
+                                  <SelectContent><SelectItem value="unpaid">UNPAID</SelectItem><SelectItem value="paid">PAID ✅</SelectItem></SelectContent>
+                                </Select>
+                                {isPaid && (
+                                  <Select value={order.payment_method || 'cash'} onValueChange={(val) => updateOrder(order.id, { payment_method: val })}>
+                                    <SelectTrigger className="h-9 text-[10px] font-bold bg-background border-border/40"><SelectValue placeholder="Method" /></SelectTrigger>
+                                    <SelectContent><SelectItem value="cash">💵 CASH</SelectItem><SelectItem value="upi">📱 UPI</SelectItem><SelectItem value="bank">🏦 BANK</SelectItem></SelectContent>
+                                  </Select>
+                                )}
+                              </div>
+                           </div>
+                           <div className="space-y-1">
+                            <Label className="text-[9px] uppercase font-black opacity-40">Installation</Label>
+                            <Select value={order.installation_type || 'technician'} onValueChange={(val) => updateOrder(order.id, { installation_type: val })}>
+                              <SelectTrigger className="h-9 text-[10px] font-bold bg-background"><SelectValue /></SelectTrigger>
+                              <SelectContent><SelectItem value="technician">👷 TECH TEAM</SelectItem><SelectItem value="self">🏠 SELF INSTALL</SelectItem></SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="p-3 rounded-xl bg-muted/20 border border-border/10">
+                          <Label className="text-[9px] uppercase font-black opacity-40 flex items-center gap-1.5"><MapPin className="w-3 h-3" /> Address</Label>
+                          <p className="text-[11px] font-bold leading-relaxed text-muted-foreground mt-1">{renderAddress(order.delivery_address)}</p>
                         </div>
                       </div>
-                    )}
 
-                    {/* Status dropdowns */}
-                    <div className="flex flex-wrap gap-3">
-                      <div className="flex items-center gap-2">
-                        <CreditCard className="w-4 h-4 text-muted-foreground" />
-                        <Select value={order.payment_status} onValueChange={v => updateStatus(order.id, "payment_status", v)}>
-                          <SelectTrigger className="w-32 h-8 text-xs bg-muted/30"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="paid">Paid</SelectItem>
-                            <SelectItem value="failed">Failed</SelectItem>
-                            <SelectItem value="refunded">Refunded</SelectItem>
-                          </SelectContent>
-                        </Select>
+                      <div className="lg:col-span-5 space-y-3">
+                        <Label className="text-[9px] uppercase font-black text-primary flex items-center gap-2"><Package className="w-4 h-4" /> Item Inventory</Label>
+                        <div className="space-y-2 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+                          {items.map((item: any, idx: number) => {
+                            const fieldKey = `${order.id}-${idx}`;
+                            const isCustom = customWarrantyFields[fieldKey];
+                            const itemPrice = parseFloat(item.price) || 0;
+                            const itemTotal = itemPrice * (item.quantity || 1);
+                            
+                            return (
+                              <div key={idx} className="bg-background/80 p-3 rounded-xl border border-border/40 space-y-2 shadow-sm">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs font-bold truncate pr-2">{item.name}</span>
+                                  <span className="text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded">x{item.quantity} - ₹{itemTotal.toLocaleString('en-IN')}</span>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Input placeholder="Serial No." defaultValue={item.serial_number} className="h-8 text-[10px] font-mono bg-muted/20 border-none" onBlur={(e) => updateItemData(order, idx, 'serial_number', e.target.value)} />
+                                  {!isCustom ? (
+                                    <Select value={String(item.warranty_months || 12)} onValueChange={(val) => val === "custom" ? setCustomWarrantyFields({...customWarrantyFields, [fieldKey]: true}) : updateItemData(order, idx, 'warranty_months', parseInt(val))}>
+                                      <SelectTrigger className="h-8 w-24 text-[10px] font-bold border-none bg-muted/20"><SelectValue /></SelectTrigger>
+                                      <SelectContent><SelectItem value="6">6M</SelectItem><SelectItem value="12">1Y</SelectItem><SelectItem value="24">2Y</SelectItem><SelectItem value="custom">✏️ Custom</SelectItem></SelectContent>
+                                    </Select>
+                                  ) : (
+                                    <div className="flex items-center gap-1">
+                                      <Input type="number" placeholder="Months" className="h-8 w-16 text-[10px]" autoFocus onBlur={(e) => {
+                                        updateItemData(order, idx, 'warranty_months', parseInt(e.target.value));
+                                        setCustomWarrantyFields({...customWarrantyFields, [fieldKey]: false});
+                                      }} />
+                                      <XCircle className="w-3.5 h-3.5 text-destructive cursor-pointer" onClick={() => setCustomWarrantyFields({...customWarrantyFields, [fieldKey]: false})} />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Wrench className="w-4 h-4 text-muted-foreground" />
-                        <Select value={order.install_status} onValueChange={v => updateStatus(order.id, "install_status", v)}>
-                          <SelectTrigger className="w-36 h-8 text-xs bg-muted/30"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="scheduled">Scheduled</SelectItem>
-                            <SelectItem value="in_progress">In Progress</SelectItem>
-                            <SelectItem value="completed">Completed</SelectItem>
-                            <SelectItem value="cancelled">Cancelled</SelectItem>
-                          </SelectContent>
-                        </Select>
+
+                      <div className="lg:col-span-4 space-y-5 border-t lg:border-t-0 lg:border-l border-border/20 pt-5 lg:pt-0 lg:pl-6 relative">
+                        {isTechRequired ? (
+                          <div className="space-y-4">
+                            <div className="space-y-1.5">
+                              <Label className="text-[9px] uppercase font-black text-primary flex items-center gap-1.5"><User className="w-3 h-3" /> Assign Expert</Label>
+                              <Select value={order.assigned_technician_id || "none"} onValueChange={(val) => updateOrder(order.id, { assigned_technician_id: val === "none" ? null : val })}>
+                                <SelectTrigger className="h-10 text-[11px] font-bold"><SelectValue placeholder="Staff..." /></SelectTrigger>
+                                <SelectContent><SelectItem value="none">UNASSIGNED</SelectItem>{staff.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-[9px] uppercase font-black opacity-40 flex items-center gap-1.5"><ClipboardList className="w-3 h-3" /> Progress Logs</Label>
+                              <textarea className="w-full h-16 bg-muted/20 rounded-xl p-2.5 text-[11px] font-medium resize-none border-none outline-none focus:ring-1 focus:ring-primary/20" placeholder="Type logs..." defaultValue={order.technician_notes} onBlur={(e) => updateOrder(order.id, { technician_notes: e.target.value })} />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="h-32 flex flex-col items-center justify-center border border-dashed rounded-2xl bg-muted/5">
+                             <p className="text-[10px] font-black uppercase tracking-widest text-center">Self Installation<br/>No Team Required</p>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-3 pt-2">
+                          <Button onClick={() => updateOrder(order.id, { install_status: 'in_progress' })} className={`h-11 rounded-xl text-xs font-black shadow-lg ${order.install_status === 'in_progress' ? 'bg-primary' : 'bg-muted text-foreground'}`}>
+                            <PlayCircle className="w-4 h-4 mr-2" /> START
+                          </Button>
+                          <Button onClick={() => updateOrder(order.id, { install_status: 'completed' })} className={`h-11 rounded-xl text-xs font-black shadow-lg ${order.install_status === 'completed' ? 'bg-green-600' : 'bg-muted text-foreground'}`}>
+                            <CheckCircle2 className="w-4 h-4 mr-2" /> DONE
+                          </Button>
+                        </div>
+                        
+                        <Button 
+                          onClick={() => setInvoiceOrder(order)} 
+                          variant="outline"
+                          className="w-full h-11 rounded-xl text-xs font-black border-primary/20 hover:bg-primary/5 text-primary"
+                        >
+                          <FileText className="w-4 h-4 mr-2" /> GENERATE TAX INVOICE
+                        </Button>
                       </div>
                     </div>
 
-                    {/* Action buttons */}
-                    <div className="flex flex-wrap gap-2">
-                      <Button size="sm" variant="outline" className="text-xs border-border/40" onClick={() => generateInvoice(order)}>
-                        <FileText className="w-3 h-3 mr-1" /> Generate Invoice
-                      </Button>
-                      <Button size="sm" variant="outline" className="text-xs border-border/40" onClick={() => window.open(`https://wa.me/${order.phone?.replace(/\D/g, "")}?text=Hi ${order.customer_name}, your order %23${order.id.slice(0, 8)} status: Payment ${order.payment_status}, Installation ${order.install_status}.`, "_blank")}>
-                        <Phone className="w-3 h-3 mr-1" /> WhatsApp
-                      </Button>
-                      <Button size="sm" variant="outline" className="text-xs border-destructive/30 text-destructive hover:bg-destructive/10" onClick={() => deleteOrder(order.id)}>
-                        <Trash2 className="w-3 h-3 mr-1" /> Delete
-                      </Button>
+                    <div className="bg-primary/5 px-6 py-2 flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-primary/60 italic border-t border-border/10">
+                       <span>{isTechRequired ? `Expert: ${order.assigned_technician?.name || 'Awaiting'}` : 'Mode: Customer Self Install'}</span>
+                       <span>Current State: {order.install_status}</span>
                     </div>
                   </motion.div>
                 )}
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })}
+      </div>
     </div>
   );
-};
-
-export default AdminOrders;
+}

@@ -2,8 +2,15 @@ import { motion } from "framer-motion";
 import { ArrowRight, Phone } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { useSettings } from "@/contexts/SettingsContext";
 
 export const CTABanner = () => {
+  const { settings } = useSettings();
+  
+  // Dynamic phone values
+  const displayPhone = settings?.phone || "+91 98120 19772";
+  const rawPhone = displayPhone.replace(/[^0-9+]/g, ''); // Removes spaces for the tel: link
+
   return (
     <section className="py-20 px-4">
       <div className="container mx-auto">
@@ -37,10 +44,10 @@ export const CTABanner = () => {
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               </Link>
-              <a href="tel:+919812019772" data-clickable>
+              <a href={`tel:${rawPhone}`} data-clickable>
                 <Button size="lg" variant="outline" className="border-border/60 hover:bg-muted/50">
                   <Phone className="w-4 h-4 mr-2" />
-                  Call +91 98120 19772
+                  Call {displayPhone}
                 </Button>
               </a>
             </div>

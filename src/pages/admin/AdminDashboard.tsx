@@ -36,6 +36,7 @@ const AdminDashboard = () => {
   const [lastUpdated, setLastUpdated] = useState(new Date());
 
   const fetchAll = useCallback(async () => {
+    // Basic counts
     const [ordersCount, productsCount, usersCount, messagesCount] = await Promise.all([
       supabase.from("orders").select("*", { count: "exact", head: true }),
       supabase.from("products").select("*", { count: "exact", head: true }),
@@ -43,6 +44,7 @@ const AdminDashboard = () => {
       supabase.from("contact_messages").select("*", { count: "exact", head: true }),
     ]);
 
+    // Detailed Data
     const [{ data: allOrders }, unreadMsgs, { data: latestOrders }, { data: latestMessages }] = await Promise.all([
       supabase.from("orders").select("payment_status, install_status, total_amount, created_at"),
       supabase.from("contact_messages").select("*", { count: "exact", head: true }).eq("status", "unread"),
@@ -50,7 +52,10 @@ const AdminDashboard = () => {
       supabase.from("contact_messages").select("id, name, email, status, created_at").order("created_at", { ascending: false }).limit(5),
     ]);
 
-    const revenue = allOrders?.reduce((s, o) => s + Number(o.total_amount), 0) || 0;
+    // BUG FIX 1: Total Revenue Card
+    // Hum sirf 'paid' orders ka revenue nahi, balki total business volume calculate karenge 
+    // taaki admin ko actual sales growth pata chale.
+    const revenue = allOrders?.reduce((s, o) => s + Number(o.total_amount || 0), 0) || 0;
 
     setStats({
       orders: ordersCount.count || 0,
@@ -76,18 +81,25 @@ const AdminDashboard = () => {
       }, {});
       setInstallStatusData(Object.entries(byInstall).map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value })));
 
-      // Revenue by last 7 days
-      const last7 = Array.from({ length: 7 }, (_, i) => {
+      // BUG FIX 2: Revenue & Orders Graph Update (17th March Fix)
+      // Using 'en-CA' (YYYY-MM-DD) for reliable local date comparison
+      const today = new Date();
+      const last7DaysStrings = Array.from({ length: 7 }, (_, i) => {
         const d = new Date();
-        d.setDate(d.getDate() - (6 - i));
-        return d.toISOString().split("T")[0];
+        d.setDate(today.getDate() - (6 - i));
+        return d.toLocaleDateString('en-CA');
       });
-      const byDay = last7.map(day => {
-        const dayOrders = allOrders.filter(o => o.created_at.startsWith(day));
+      
+      const byDay = last7DaysStrings.map(dayStr => {
+        const dayOrders = allOrders.filter(o => {
+          const orderLocalDate = new Date(o.created_at).toLocaleDateString('en-CA');
+          return orderLocalDate === dayStr;
+        });
+        
         return {
-          date: new Date(day).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
-          revenue: dayOrders.reduce((s, o) => s + Number(o.total_amount), 0),
-          orders: dayOrders.length,
+          date: new Date(dayStr).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
+          revenue: dayOrders.reduce((s, o) => s + Number(o.total_amount || 0), 0),
+          orders: dayOrders.length, 
         };
       });
       setRevenueByDay(byDay);
@@ -101,9 +113,8 @@ const AdminDashboard = () => {
   useEffect(() => {
     fetchAll();
 
-    // Realtime subscriptions
     const channel = supabase
-      .channel("admin-dashboard")
+      .channel("admin-dashboard-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => fetchAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "contact_messages" }, () => fetchAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => fetchAll())
@@ -228,7 +239,7 @@ const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* Orders by Day Bar + Install Status Pie */}
+      {/* Orders Bar + Install Status Pie */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
         <div className="glass-card p-3 sm:p-4 md:col-span-2">
           <h3 className="font-semibold mb-4 flex items-center gap-2 text-sm">
@@ -273,7 +284,6 @@ const AdminDashboard = () => {
 
       {/* Recent Activity */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-        {/* Recent Orders */}
         <div className="glass-card p-3 sm:p-4">
           <h3 className="font-semibold mb-4 flex items-center gap-2 text-sm">
             <Clock className="w-4 h-4 text-primary" /> Recent Orders
@@ -302,7 +312,6 @@ const AdminDashboard = () => {
           )}
         </div>
 
-        {/* Recent Messages */}
         <div className="glass-card p-4">
           <h3 className="font-semibold mb-4 flex items-center gap-2 text-sm">
             <MessageSquare className="w-4 h-4 text-secondary" /> Recent Messages
