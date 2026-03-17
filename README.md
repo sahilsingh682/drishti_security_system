@@ -96,3 +96,4 @@ The application will be available at `http://localhost:5173`.
 ---
 
 *Designed and developed for Drishti Security Systems. All rights reserved.*
+
