@@ -10,6 +10,7 @@ import { CustomCursor } from "@/components/CustomCursor";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { SettingsProvider } from "@/contexts/SettingsContext";
+import TechLibrary from "@/pages/TechLibrary";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
@@ -35,6 +36,7 @@ import NotFound from "./pages/NotFound";
 import AdminCoupons from "./pages/admin/AdminCoupons";
 import AdminStaff from "./pages/admin/AdminStaff"; 
 import TechnicianDashboard from "./pages/TechnicianDashboard";
+import TrackOrder from "./pages/TrackOrder";
 
 const queryClient = new QueryClient();
 
@@ -63,6 +65,7 @@ const App = () => (
                 <Route path="/kit-builder" element={<KitBuilder />} />
                 <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                 <Route path="/technician" element={<ProtectedRoute><TechnicianDashboard /></ProtectedRoute>} />
+                <Route path="/track-order" element={<TrackOrder />} />
                 
                 {/* --- SECURE ADMIN ROUTES --- */}
                 <Route path="/admin" element={<ProtectedRoute requireAdmin><AdminLayout /></ProtectedRoute>}>

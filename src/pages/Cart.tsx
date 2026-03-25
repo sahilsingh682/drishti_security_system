@@ -57,11 +57,14 @@ const Cart = () => {
   
   const finalTotal = Math.max(0, cartTotal - discountAmount);
 
+  // 🚀 PRO FIX: Ab hum Cart se ekdum clean Data modal ko bhej rahe hain
   const cartProduct = cart.length > 0 ? {
     id: "cart-order",
-    name: cart.map(i => `${i.name} x${i.quantity}`).join(", ") + 
-          (appliedCoupon ? ` [Applied Coupon: ${appliedCoupon.code}]` : ""),
+    name: cart.map(i => `${i.name} x${i.quantity}`).join(", "), // For WhatsApp Msg
     price: finalTotal,
+    rawItems: cart, // For Database & Invoice 
+    appliedCouponCode: appliedCoupon ? appliedCoupon.code : null, // Catching Coupon
+    discountAmount: discountAmount, // Catching Amount
   } : null;
 
   return (
@@ -179,4 +182,4 @@ const Cart = () => {
   );
 };
 
-export default Cart; 
+export default Cart;

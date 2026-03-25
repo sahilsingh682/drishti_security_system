@@ -5,15 +5,27 @@ import {
   ShoppingBag, Phone, MapPin, Wrench, Package, 
   CreditCard, ShieldCheck, Search, ChevronDown, ChevronUp, 
   PlayCircle, CheckCircle2, Calendar, XCircle, User,
-  ClipboardList, FileText, Printer, ArrowLeft
+  ClipboardList, FileText, Printer, ArrowLeft, Truck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { useSettings } from "@/contexts/SettingsContext";
+
+const parseAddress = (addr: any): string => {
+  if (!addr) return "—";
+  try {
+    const a = typeof addr === "string" ? JSON.parse(addr) : addr;
+    return [a.houseNo, a.society, a.landmark, a.area, a.city, a.state, a.pincode].filter(Boolean).join(", ");
+  } catch {
+    return String(addr);
+  }
+};
 
 export default function AdminOrders() {
+  const { settings } = useSettings(); 
   const [orders, setOrders] = useState<any[]>([]);
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,13 +54,6 @@ export default function AdminOrders() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const renderAddress = (address: any) => {
-    if (!address) return "No address provided";
-    if (typeof address === 'string') return address;
-    const parts = [address.houseNo, address.society, address.area, address.landmark ? `(Near ${address.landmark})` : null, address.city, address.pincode].filter(Boolean);
-    return Array.from(new Set(parts)).join(", ");
-  };
-
   const updateOrder = async (orderId: string, updates: any) => {
     if (updates.installation_type === 'self') {
       updates.assigned_technician_id = null;
@@ -73,17 +78,23 @@ export default function AdminOrders() {
     order.id.includes(searchTerm)
   );
 
-  // 🖨️ INVOICE RENDERER (With GST Calculation)
+  // 🖨️ INVOICE RENDERER
   if (invoiceOrder) {
     let invoiceItems = [];
     try { invoiceItems = typeof invoiceOrder.items === 'string' ? JSON.parse(invoiceOrder.items) : (invoiceOrder.items || []); } catch (e) { invoiceItems = []; }
     
-    // 🧮 GST Calculation (18% Inclusive Logic)
+    const subtotal = invoiceItems.reduce((sum: number, item: any) => sum + ((parseFloat(item.price) || 0) * (item.quantity || item.qty || 1)), 0);
     const grandTotal = Number(invoiceOrder.total_amount) || 0;
-    const baseAmount = grandTotal / 1.18; // Reverse calculate base price
+    
+    const discountAmount = Number(invoiceOrder.discount_amount) || (subtotal > grandTotal ? subtotal - grandTotal : 0);
+    const hasDiscount = discountAmount > 0;
+
+    const baseAmount = grandTotal / 1.18; 
     const totalGst = grandTotal - baseAmount;
     const cgst = totalGst / 2;
     const sgst = totalGst / 2;
+
+    const displayPhone = settings?.whatsapp_number || "919812366805";
 
     return (
       <div className="fixed inset-0 z-50 bg-white overflow-auto print:p-0 p-4 sm:p-8">
@@ -96,18 +107,15 @@ export default function AdminOrders() {
            </Button>
         </div>
 
-        {/* 📄 THE ACTUAL INVOICE A4 SHEET */}
         <div className="max-w-4xl mx-auto bg-white text-black p-8 sm:p-12 border border-gray-200 shadow-2xl print:shadow-none print:border-none rounded-xl print:rounded-none">
-           
-           {/* Invoice Header */}
            <div className="flex justify-between items-start border-b-2 border-gray-800 pb-8 mb-8">
               <div>
                  <h1 className="text-4xl font-black text-orange-600 tracking-tighter uppercase italic leading-none">Drishti</h1>
                  <p className="text-lg font-black tracking-widest text-gray-800 mt-1 uppercase">Security System</p>
                  <div className="mt-4 text-xs font-medium text-gray-500 space-y-1">
                     <p>Panipat, Haryana, India</p>
-                    <p>Phone: +91 8787225596</p>
-                    <p>Email: support@drishtisecurity.com</p>
+                    <p>Phone: +{displayPhone}</p>
+                    <p>Email: {settings?.business_email || "support@drishtisecurity.com"}</p>
                     <p className="font-bold text-gray-800 pt-1">GSTIN: 06DRISH715E1Z5</p>
                  </div>
               </div>
@@ -121,13 +129,12 @@ export default function AdminOrders() {
               </div>
            </div>
 
-           {/* Customer Details */}
            <div className="grid grid-cols-2 gap-8 mb-8">
               <div>
                  <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">Billed To:</p>
                  <h3 className="text-lg font-black text-gray-800">{invoiceOrder.customer_name}</h3>
                  <p className="text-sm font-medium text-gray-600 mt-1">{invoiceOrder.phone}</p>
-                 <p className="text-xs font-medium text-gray-500 mt-1 max-w-[250px] leading-relaxed">{renderAddress(invoiceOrder.delivery_address)}</p>
+                 <p className="text-xs font-medium text-gray-500 mt-1 max-w-[250px] leading-relaxed">{parseAddress(invoiceOrder.delivery_address)}</p>
                  <p className="text-xs font-bold text-gray-600 mt-2">State: Haryana (06)</p>
               </div>
               <div className="text-right">
@@ -142,7 +149,6 @@ export default function AdminOrders() {
               </div>
            </div>
 
-           {/* Itemized Table */}
            <table className="w-full text-left mb-8 border-collapse">
               <thead>
                  <tr className="bg-gray-100 text-gray-800 text-[10px] uppercase font-black tracking-widest">
@@ -156,12 +162,13 @@ export default function AdminOrders() {
               <tbody className="divide-y divide-gray-100">
                  {invoiceItems.map((item: any, idx: number) => {
                     const price = parseFloat(item.price) || 0;
-                    const qty = item.quantity || 1;
+                    const qty = item.quantity || item.qty || 1;
                     const total = price * qty;
+                    const cleanName = item.name.replace(/\[Applied Coupon:.*?\]/g, '').trim();
                     return (
                       <tr key={idx} className="text-sm font-medium text-gray-700">
                          <td className="py-4 px-4">
-                            <p className="font-bold text-gray-900">{item.name}</p>
+                            <p className="font-bold text-gray-900">{cleanName}</p>
                             {item.serial_number && <p className="text-[10px] font-mono text-gray-500 mt-1">S/N: {item.serial_number}</p>}
                          </td>
                          <td className="py-4 px-4 text-center text-xs">{item.warranty_months ? `${item.warranty_months} Months` : 'N/A'}</td>
@@ -174,11 +181,23 @@ export default function AdminOrders() {
               </tbody>
            </table>
 
-           {/* GST Total Calculation */}
            <div className="flex justify-end border-t-2 border-gray-800 pt-6 mb-12">
-              <div className="w-72 space-y-3">
+              <div className="w-80 space-y-3">
                  <div className="flex justify-between text-sm font-bold text-gray-600">
-                    <span>Taxable Value:</span>
+                    <span>Subtotal (Items):</span>
+                    <span>₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                 </div>
+                 
+                 {hasDiscount && (
+                   <div className="flex justify-between text-sm font-bold text-emerald-600 bg-emerald-50 px-2 py-1 -mx-2 rounded">
+                     <span>Discount Applied {invoiceOrder.applied_coupon_code ? `(${invoiceOrder.applied_coupon_code})` : ''}:</span>
+                     <span>- ₹{discountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                   </div>
+                 )}
+
+                 <div className="flex justify-between text-sm font-bold text-gray-600 pt-2 border-t border-gray-100 mt-2">
+                    {/* 🚀 FIXED: Dynamic Taxable Value Label */}
+                    <span>Taxable Value {hasDiscount ? '(Post Discount)' : ''}:</span>
                     <span>₹{baseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                  </div>
                  <div className="flex justify-between text-sm font-bold text-gray-600">
@@ -196,11 +215,11 @@ export default function AdminOrders() {
               </div>
            </div>
 
-           {/* Footer / Terms */}
            <div className="text-[10px] font-medium text-gray-400 leading-relaxed border-t border-gray-100 pt-6">
               <p className="font-bold text-gray-600 mb-1">Terms & Conditions:</p>
               <p>1. Warranty is strictly applicable against manufacturing defects only as per the specified months. Physical damage, burns, or electrical surges are not covered.</p>
               <p>2. Please retain this tax invoice and product serial numbers for any warranty claims. You can verify your warranty status 24/7 on our official website.</p>
+              <p>3. Tax is calculated on the final discounted value as per government regulations.</p>
               <p className="mt-6 text-center font-black tracking-widest uppercase text-gray-300">Thank you for choosing Drishti Security</p>
            </div>
         </div>
@@ -239,7 +258,7 @@ export default function AdminOrders() {
                   <div className="truncate">
                     <h3 className="font-bold text-sm md:text-base truncate leading-tight">{order.customer_name}</h3>
                     <div className="flex items-center gap-2 mt-0.5">
-                       <span className="text-[10px] font-mono font-bold opacity-40">#{order.id.slice(0,6)}</span>
+                       <span className="text-[10px] font-mono font-bold opacity-40">#{order.id.slice(0, 8).toUpperCase()}</span>
                        <span className="text-[9px] bg-primary/5 text-primary px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">{order.install_status}</span>
                     </div>
                   </div>
@@ -269,9 +288,10 @@ export default function AdminOrders() {
                            <div className="space-y-2">
                               <Label className="text-[9px] uppercase font-black opacity-40">Payment</Label>
                               <div className="flex flex-col gap-2">
-                                <Select value={order.payment_status} onValueChange={(val) => updateOrder(order.id, { payment_status: val })}>
+                                {/* 🚀 FIXED BUG 1: Dropdown mein ab 'pending' match ho jayega */}
+                                <Select value={order.payment_status || 'pending'} onValueChange={(val) => updateOrder(order.id, { payment_status: val })}>
                                   <SelectTrigger className={`h-9 text-[10px] font-bold ${isPaid ? 'bg-green-500/10 text-green-600 border-green-500/20' : 'bg-orange-500/10 text-orange-600 border-orange-500/20'}`}><SelectValue /></SelectTrigger>
-                                  <SelectContent><SelectItem value="unpaid">UNPAID</SelectItem><SelectItem value="paid">PAID ✅</SelectItem></SelectContent>
+                                  <SelectContent><SelectItem value="pending">PENDING</SelectItem><SelectItem value="paid">PAID ✅</SelectItem><SelectItem value="failed">FAILED ❌</SelectItem></SelectContent>
                                 </Select>
                                 {isPaid && (
                                   <Select value={order.payment_method || 'cash'} onValueChange={(val) => updateOrder(order.id, { payment_method: val })}>
@@ -291,7 +311,7 @@ export default function AdminOrders() {
                         </div>
                         <div className="p-3 rounded-xl bg-muted/20 border border-border/10">
                           <Label className="text-[9px] uppercase font-black opacity-40 flex items-center gap-1.5"><MapPin className="w-3 h-3" /> Address</Label>
-                          <p className="text-[11px] font-bold leading-relaxed text-muted-foreground mt-1">{renderAddress(order.delivery_address)}</p>
+                          <p className="text-[11px] font-bold leading-relaxed text-muted-foreground mt-1">{parseAddress(order.delivery_address)}</p>
                         </div>
                       </div>
 
@@ -302,23 +322,30 @@ export default function AdminOrders() {
                             const fieldKey = `${order.id}-${idx}`;
                             const isCustom = customWarrantyFields[fieldKey];
                             const itemPrice = parseFloat(item.price) || 0;
-                            const itemTotal = itemPrice * (item.quantity || 1);
+                            const qty = item.quantity || item.qty || 1;
+                            const itemTotal = itemPrice * qty;
                             
                             return (
                               <div key={idx} className="bg-background/80 p-3 rounded-xl border border-border/40 space-y-2 shadow-sm">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-xs font-bold truncate pr-2">{item.name}</span>
-                                  <span className="text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded">x{item.quantity} - ₹{itemTotal.toLocaleString('en-IN')}</span>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-xs font-bold truncate pr-2">{item.name.replace(/\[Applied Coupon:.*?\]/g, '').trim()}</span>
+                                  <span className="text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded">x{qty} - ₹{itemTotal.toLocaleString('en-IN')}</span>
                                 </div>
-                                <div className="flex gap-2">
-                                  <Input placeholder="Serial No." defaultValue={item.serial_number} className="h-8 text-[10px] font-mono bg-muted/20 border-none" onBlur={(e) => updateItemData(order, idx, 'serial_number', e.target.value)} />
+                                <div className="flex gap-2 items-center">
+                                  {/* 🚀 FIXED BUG 2: Multi-qty ke liye lamba dabba aur better hint */}
+                                  <Input 
+                                    placeholder={qty > 1 ? "Enter multiple Serial Nos (comma separated)..." : "Serial No."} 
+                                    defaultValue={item.serial_number} 
+                                    className="h-8 text-[10px] font-mono bg-muted/20 border-border/40 flex-1" 
+                                    onBlur={(e) => updateItemData(order, idx, 'serial_number', e.target.value)} 
+                                  />
                                   {!isCustom ? (
                                     <Select value={String(item.warranty_months || 12)} onValueChange={(val) => val === "custom" ? setCustomWarrantyFields({...customWarrantyFields, [fieldKey]: true}) : updateItemData(order, idx, 'warranty_months', parseInt(val))}>
-                                      <SelectTrigger className="h-8 w-24 text-[10px] font-bold border-none bg-muted/20"><SelectValue /></SelectTrigger>
+                                      <SelectTrigger className="h-8 w-20 text-[10px] font-bold border-none bg-muted/20 shrink-0"><SelectValue /></SelectTrigger>
                                       <SelectContent><SelectItem value="6">6M</SelectItem><SelectItem value="12">1Y</SelectItem><SelectItem value="24">2Y</SelectItem><SelectItem value="custom">✏️ Custom</SelectItem></SelectContent>
                                     </Select>
                                   ) : (
-                                    <div className="flex items-center gap-1">
+                                    <div className="flex items-center gap-1 shrink-0">
                                       <Input type="number" placeholder="Months" className="h-8 w-16 text-[10px]" autoFocus onBlur={(e) => {
                                         updateItemData(order, idx, 'warranty_months', parseInt(e.target.value));
                                         setCustomWarrantyFields({...customWarrantyFields, [fieldKey]: false});
@@ -354,12 +381,13 @@ export default function AdminOrders() {
                           </div>
                         )}
 
+                        {/* 🚀 FIXED BUG 3: Self Install ke buttons Dispatch/Delivered ho gaye */}
                         <div className="grid grid-cols-2 gap-3 pt-2">
                           <Button onClick={() => updateOrder(order.id, { install_status: 'in_progress' })} className={`h-11 rounded-xl text-xs font-black shadow-lg ${order.install_status === 'in_progress' ? 'bg-primary' : 'bg-muted text-foreground'}`}>
-                            <PlayCircle className="w-4 h-4 mr-2" /> START
+                            {isTechRequired ? <><PlayCircle className="w-4 h-4 mr-2" /> START</> : <><Truck className="w-4 h-4 mr-2" /> DISPATCH</>}
                           </Button>
                           <Button onClick={() => updateOrder(order.id, { install_status: 'completed' })} className={`h-11 rounded-xl text-xs font-black shadow-lg ${order.install_status === 'completed' ? 'bg-green-600' : 'bg-muted text-foreground'}`}>
-                            <CheckCircle2 className="w-4 h-4 mr-2" /> DONE
+                            <CheckCircle2 className="w-4 h-4 mr-2" /> {isTechRequired ? 'DONE' : 'DELIVERED'}
                           </Button>
                         </div>
                         

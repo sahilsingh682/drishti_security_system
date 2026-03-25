@@ -139,7 +139,6 @@ export const OrderHistory = ({ userId }: OrderHistoryProps) => {
     return () => { supabase.removeChannel(channel); };
   }, [userId]);
 
-  // 🚀 FIX 1: Reorder ab user ko seedha Cart par bhej dega
   const handleReorder = (order: any) => {
     const items = parseItemsRobust(order.items);
     if (items.length === 0) { toast.error("No items to reorder"); return; }
@@ -150,20 +149,33 @@ export const OrderHistory = ({ userId }: OrderHistoryProps) => {
       }, item.qty);
     });
     toast.success(`${items.length} item(s) added back to cart!`);
-    navigate('/cart'); // <-- User flow smooth kar diya
+    navigate('/cart'); 
   };
 
-  // 🚀 FIX 2: Hidden iFrame for Invoice (Bypasses Popup Blockers)
+  // 🚀 FIXED: DOWNLOAD INVOICE AB DISCOUNT AUR COUPONS BHI DIKHAYEGA
   const downloadInvoice = (order: any) => {
     toast.loading("Generating Tax Invoice...", { id: "pdf-toast" });
 
-    const grandTotal = Number(order.total_amount) || 0;
-    const baseAmount = grandTotal / 1.18;
-    const totalGst = grandTotal - baseAmount;
+    const items = parseItemsRobust(order.items);
+    
+    // 1. Calculate the Raw Subtotal (Before Discount)
+    const subtotal = items.reduce((sum: number, item: any) => sum + (item.price * item.qty), 0);
+    
+    // 2. Fetch the Final Paid Amount from DB
+    const finalTotal = Number(order.total_amount) || 0;
+    
+    // 3. Smart Discount Calculation:
+    // Pehle DB se check karega ki koi explicit discount tha kya.
+    // Agar nahi tha, par Subtotal > Final Total hai, iska matlab kuch toh discount laga tha (fallback mechanism)
+    const discountAmount = Number(order.discount_amount) || (subtotal > finalTotal ? subtotal - finalTotal : 0);
+    const hasDiscount = discountAmount > 0;
+
+    // 4. Tax is ALWAYS calculated on the Final Paid Amount
+    const baseAmount = finalTotal / 1.18;
+    const totalGst = finalTotal - baseAmount;
     const cgst = totalGst / 2;
     const sgst = totalGst / 2;
 
-    const items = parseItemsRobust(order.items);
     const itemsHtml = items.length > 0 
       ? items.map((item: any) => `
         <tr class="border-b border-gray-100 text-gray-700 text-sm">
@@ -245,9 +257,22 @@ export const OrderHistory = ({ userId }: OrderHistoryProps) => {
       </table>
 
       <div class="flex justify-end border-t-2 border-gray-800 pt-6 mb-12">
-        <div class="w-72 space-y-3">
+        <div class="w-80 space-y-3">
+          
           <div class="flex justify-between text-sm font-bold text-gray-600">
-            <span>Taxable Value:</span>
+            <span>Subtotal (Items):</span>
+            <span>₹${subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+
+          ${hasDiscount ? `
+          <div class="flex justify-between text-sm font-bold text-emerald-600 bg-emerald-50 px-2 py-1 -mx-2 rounded">
+            <span>Discount Applied ${order.applied_coupon_code ? `(${order.applied_coupon_code})` : ''}:</span>
+            <span>- ₹${discountAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+          ` : ''}
+
+          <div class="flex justify-between text-sm font-bold text-gray-600 pt-2 border-t border-gray-100 mt-2">
+            <span>Taxable Value ${hasDiscount ? '(Post Discount)' : ''}:</span>
             <span>₹${baseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
           <div class="flex justify-between text-sm font-bold text-gray-600">
@@ -260,7 +285,7 @@ export const OrderHistory = ({ userId }: OrderHistoryProps) => {
           </div>
           <div class="flex justify-between text-xl font-black text-orange-600 pt-4 border-t border-gray-200 mt-2">
             <span>Grand Total:</span>
-            <span>₹${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span>₹${finalTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
         </div>
       </div>
@@ -269,11 +294,11 @@ export const OrderHistory = ({ userId }: OrderHistoryProps) => {
         <p class="font-bold text-gray-600 mb-1">Terms & Conditions:</p>
         <p>1. Warranty is strictly applicable against manufacturing defects only. Physical damage is not covered.</p>
         <p>2. Please retain this tax invoice and product serial numbers for any warranty claims. Verify warranty 24/7 on our website.</p>
+        <p>3. Tax is calculated on the final discounted value as per government regulations.</p>
       </div>
     </body>
     </html>`;
 
-    // Hidden iframe trick
     const iframe = document.createElement('iframe');
     iframe.style.display = 'none';
     document.body.appendChild(iframe);
@@ -289,7 +314,6 @@ export const OrderHistory = ({ userId }: OrderHistoryProps) => {
           iframe.contentWindow?.focus();
           iframe.contentWindow?.print();
           
-          // Cleanup iframe after print dialog
           setTimeout(() => {
             if (document.body.contains(iframe)) {
               document.body.removeChild(iframe);
@@ -333,7 +357,7 @@ export const OrderHistory = ({ userId }: OrderHistoryProps) => {
 
           <div className="text-sm font-medium text-foreground bg-muted/20 p-3 rounded-lg border border-border/30">
             {parseItemsRobust(order.items).map((item, j) => (
-              <span key={j}>{item.name} <span className="text-muted-foreground text-xs">×{item.qty}</span>{j < parseItemsRobust(order.items).length - 1 ? ", " : ""}</span>
+              <span key={j}>{item.name.replace(/\[Applied Coupon:.*?\]/g, '').trim()} <span className="text-muted-foreground text-xs">×{item.qty}</span>{j < parseItemsRobust(order.items).length - 1 ? ", " : ""}</span>
             ))}
           </div>
 

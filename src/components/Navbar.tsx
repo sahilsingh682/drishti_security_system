@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Shield, Menu, X, User, ShoppingBag, Phone, Home, 
-  Wrench, Search, LogOut, Settings, UserCog, ShoppingCart, Heart 
+  Wrench, Search, LogOut, Settings, UserCog, ShoppingCart, Heart ,Package
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
@@ -22,6 +22,7 @@ const navItems = [
   { label: "Store", path: "/store", icon: ShoppingBag },
   { label: "Kit Builder", path: "/kit-builder", icon: Wrench },
   { label: "Warranty", path: "/warranty", icon: Search },
+  { label: "Track Order", path: "/track-order", icon: Package },
   { label: "Contact", path: "/contact", icon: Phone },
 ];
 
