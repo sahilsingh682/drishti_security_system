@@ -81,12 +81,14 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
       address.landmark, address.city, address.state, address.pincode
     ].filter(Boolean).join(', ');
 
-    const couponText = product.appliedCouponCode ? `\n*Coupon Applied:* ${product.appliedCouponCode}` : '';
+    // Safely handle missing product data just in case the cart cleared too early!
+    const productName = product?.name || "Drishti Security Equipment";
+    const couponText = product?.appliedCouponCode ? `\n*Coupon Applied:* ${product.appliedCouponCode}` : '';
 
     const msg = encodeURIComponent(
       `🟢 *Drishti Security - New Order*\n\n` +
       `*Order ID:* #${orderId}\n` +
-      `*Product:* ${product.name}\n` +
+      `*Product:* ${productName}\n` +
       `*Amount Paid:* ₹${Number(finalTotal).toLocaleString()}` + 
       couponText + `\n` +
       `*Payment:* ${paymentText}\n\n` +
@@ -96,9 +98,10 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
       (address.lat ? `\n*Map Location:* https://maps.google.com/?q=$${address.lat},${address.lng}` : '')
     );
 
-    const targetNumber = (settings?.whatsapp || "919812019772").replace(/\D/g, ''); 
+    const targetNumber = (settings?.whatsapp|| "919812019772").replace(/\D/g, ''); 
     window.open(`https://wa.me/${targetNumber}?text=${msg}`, "_blank");
     
+    // NOW we safely tell the parent component (the Cart) that it can clear the items
     onSuccess?.();
     setIsSuccess(true); 
     setLoading(false);
