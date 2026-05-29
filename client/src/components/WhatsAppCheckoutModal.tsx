@@ -4,12 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-// Removed supabase client import as we now use the Express backend!
 import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { AddressInput, type AddressData } from "@/components/AddressInput";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner"; // Used for payment failure notifications
 
 interface Props {
   product: any | null;
@@ -17,6 +17,17 @@ interface Props {
   onClose: () => void;
   onSuccess?: () => void;
 }
+
+// Utility to securely load the Razorpay checkout script
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
 
 export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Props) => {
   const { user, profile } = useAuth();
@@ -63,23 +74,52 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
     }
   }, [profile, open, isSuccess]);
 
+  // Helper function to generate and send the final WhatsApp message
+  const triggerWhatsApp = (orderId: string, finalTotal: number, paymentText: string) => {
+    const fullAddress = [
+      address.houseNo, address.society, address.area, 
+      address.landmark, address.city, address.state, address.pincode
+    ].filter(Boolean).join(', ');
+
+    const couponText = product.appliedCouponCode ? `\n*Coupon Applied:* ${product.appliedCouponCode}` : '';
+
+    const msg = encodeURIComponent(
+      `🟢 *Drishti Security - New Order*\n\n` +
+      `*Order ID:* #${orderId}\n` +
+      `*Product:* ${product.name}\n` +
+      `*Amount Paid:* ₹${Number(finalTotal).toLocaleString()}` + 
+      couponText + `\n` +
+      `*Payment:* ${paymentText}\n\n` +
+      `*Customer:* ${firstName} ${lastName}\n` +
+      `*Phone:* ${phone}\n` +
+      `*Address:* ${fullAddress}` +
+      (address.lat ? `\n*Map Location:* https://maps.google.com/?q=$${address.lat},${address.lng}` : '')
+    );
+
+    const targetNumber = (settings?.whatsapp_number || "919812019772").replace(/\D/g, ''); 
+    window.open(`https://wa.me/${targetNumber}?text=${msg}`, "_blank");
+    
+    onSuccess?.();
+    setIsSuccess(true); 
+    setLoading(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!product) return;
     setLoading(true);
 
     try {
-      // 1. Prepare items array (just ID and QTY, backend checks the real price)
       const orderItems = product.rawItems || [{ id: product.id, name: product.name, qty: 1 }];
-      
-      // 2. Send data to the secure Express backend using environment variables!
       const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+      
+      // 1. Create the Order on Backend
       const response = await fetch(`${API_URL}/api/orders/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           items: orderItems,
-          totalAmount: product.price, // <-- ADD THIS LINE!
+          totalAmount: product.price,
           customerDetails: {
             name: `${firstName} ${lastName}`.trim(),
             phone: phone,
@@ -92,50 +132,81 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
       });
 
       const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Checkout failed');
-      }
+      if (!response.ok || !data.success) throw new Error(data.error || 'Checkout failed');
 
       const newOrderId = data.orderId;
+      const secureTotal = data.totalAmount;
       setGeneratedOrderId(newOrderId);
 
-      // 3. Generate WhatsApp Message using the SECURE totalAmount from the backend
-      const secureTotal = data.totalAmount || product.price;
+      // 2. Route based on Payment Method
+      if (paymentMethod === 'online' && data.razorpayOrderId) {
+        
+        // Load Razorpay Script
+        const res = await loadRazorpayScript();
+        if (!res) {
+          toast.error("Razorpay SDK failed to load. Are you online?");
+          setLoading(false);
+          return;
+        }
 
-      const fullAddress = [
-        address.houseNo, address.society, address.area, 
-        address.landmark, address.city, address.state, address.pincode
-      ].filter(Boolean).join(', ');
+        // Configure the Razorpay popup
+        const options = {
+          key: import.meta.env.VITE_RAZORPAY_KEY_ID, 
+          amount: Math.round(secureTotal * 100), // paise
+          currency: "INR",
+          name: "Drishti Security System",
+          description: "Secure Checkout",
+          order_id: data.razorpayOrderId,
+          handler: async function (rzpResponse: any) {
+            
+            // 3. User paid! Verify cryptographic signature on the backend
+            const verifyRes = await fetch(`${API_URL}/api/orders/verify-payment`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                razorpay_order_id: rzpResponse.razorpay_order_id,
+                razorpay_payment_id: rzpResponse.razorpay_payment_id,
+                razorpay_signature: rzpResponse.razorpay_signature,
+                orderId: newOrderId
+              })
+            });
+            
+            const verifyData = await verifyRes.json();
+            
+            if (verifyData.success) {
+              // Verified! Send WhatsApp with "Paid" status
+              triggerWhatsApp(newOrderId, secureTotal, "Online Payment (Paid Successfully) ✅");
+            } else {
+              toast.error("Payment verification failed! Please contact support.");
+              setLoading(false);
+            }
+          },
+          prefill: {
+            name: `${firstName} ${lastName}`.trim(),
+            contact: phone,
+          },
+          theme: {
+            color: "#0f172a", // Matches your primary branding
+          },
+        };
 
-      const paymentText = paymentMethod === "cash_on_install" ? "Cash/UPI on Installation" : "Online Payment (Pending)";
-      const couponText = product.appliedCouponCode ? `\n*Coupon Applied:* ${product.appliedCouponCode}` : '';
+        const paymentObject = new (window as any).Razorpay(options);
+        paymentObject.on('payment.failed', function (response: any) {
+          toast.error("Payment cancelled or failed. Please try again.");
+          setLoading(false);
+        });
+        paymentObject.open();
 
-      const msg = encodeURIComponent(
-        `🟢 *Drishti Security - New Order*\n\n` +
-        `*Order ID:* #${newOrderId}\n` +
-        `*Product:* ${product.name}\n` +
-        `*Amount Paid:* ₹${Number(secureTotal).toLocaleString()}` + 
-        couponText + `\n` +
-        `*Payment:* ${paymentText}\n\n` +
-        `*Customer:* ${firstName} ${lastName}\n` +
-        `*Phone:* ${phone}\n` +
-        `*Address:* ${fullAddress}` +
-        (address.lat ? `\n*Map Location:* https://maps.google.com/?q=$${address.lat},${address.lng}` : '')
-      );
-
-      const targetNumber = (settings?.whatsapp_number || "919812019772").replace(/\D/g, ''); 
-      window.open(`https://wa.me/${targetNumber}?text=${msg}`, "_blank");
-      
-      onSuccess?.();
-      setIsSuccess(true); 
+      } else {
+        // Cash on Install route -> Instantly trigger WhatsApp
+        triggerWhatsApp(newOrderId, secureTotal, "Cash/UPI on Installation");
+      }
       
     } catch (err: any) {
       console.error("Checkout error:", err);
-      // If you have a toast notification system, trigger it here!
-    } finally {
+      toast.error("Something went wrong during checkout.");
       setLoading(false);
-    }
+    } 
   };
 
   const handleTrackOrder = () => {
@@ -210,7 +281,7 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
                 </div>
 
                 <Button type="submit" className="w-full h-12 bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-widest shadow-lg shadow-primary/20 mt-2" disabled={loading}>
-                  {loading ? "Processing..." : "Confirm Order via WhatsApp"}
+                  {loading ? "Processing..." : (paymentMethod === 'online' ? "Pay Securely" : "Confirm Order via WhatsApp")}
                 </Button>
               </form>
             </motion.div>
