@@ -71,7 +71,7 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
     try {
       // 1. Prepare items array (just ID and QTY, backend checks the real price)
       const orderItems = product.rawItems || [{ id: product.id, name: product.name, qty: 1 }];
-
+      
       // 2. Send data to the secure Express backend using environment variables!
       const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
       const response = await fetch(`${API_URL}/api/orders/checkout`, {
@@ -79,6 +79,7 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           items: orderItems,
+          totalAmount: product.price, // <-- ADD THIS LINE!
           customerDetails: {
             name: `${firstName} ${lastName}`.trim(),
             phone: phone,
