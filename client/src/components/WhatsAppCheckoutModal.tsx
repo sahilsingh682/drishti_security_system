@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
+// Removed supabase client import as we now use the Express backend!
 import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { AddressInput, type AddressData } from "@/components/AddressInput";
@@ -69,35 +69,37 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
     setLoading(true);
 
     try {
-      const orderData = {
-        user_id: user?.id || null,
-        customer_name: `${firstName} ${lastName}`.trim(),
-        phone,
-        delivery_address: JSON.stringify({
-          pincode: address.pincode, city: address.city, state: address.state,
-          houseNo: address.houseNo, society: address.society, landmark: address.landmark, area: address.area,
-          lat: address.lat, lng: address.lng,
+      // 1. Prepare items array (just ID and QTY, backend checks the real price)
+      const orderItems = product.rawItems || [{ id: product.id, name: product.name, qty: 1 }];
+
+      // 2. Send data to the secure Express backend
+      const response = await fetch('http://localhost:5000/api/orders/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: orderItems,
+          customerDetails: {
+            name: `${firstName} ${lastName}`.trim(),
+            phone: phone,
+            address: address, 
+            userId: user?.id || null,
+            paymentMethod: paymentMethod,
+            couponCode: product.appliedCouponCode || null
+          }
         }),
-        // 🚀 SMART CHECK: Agar Cart se aaye hain toh real item array bhejenge
-        items: JSON.stringify(product.rawItems || [{ id: product.id, name: product.name, price: product.price, qty: 1 }]),
-        total_amount: product.price,
-        whatsapp_sync: true,
-        payment_method: paymentMethod, 
-        payment_status: paymentMethod === "cash_on_install" ? "pending" : "pending",
-        install_status: "pending",
-        // 🚀 SMART CHECK: Catching Coupon Data
-        applied_coupon_code: product.appliedCouponCode || null,
-        discount_amount: product.discountAmount || 0,
-      };
+      });
 
-      let newOrderId = "ORD-" + Math.floor(100000 + Math.random() * 900000);
+      const data = await response.json();
 
-      if (user) {
-        const { data } = await supabase.from("orders").insert(orderData).select('id').single();
-        if (data) newOrderId = data.id.slice(0, 8).toUpperCase();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Checkout failed');
       }
-      
+
+      const newOrderId = data.orderId;
       setGeneratedOrderId(newOrderId);
+
+      // 3. Generate WhatsApp Message using the SECURE totalAmount from the backend
+      const secureTotal = data.totalAmount || product.price;
 
       const fullAddress = [
         address.houseNo, address.society, address.area, 
@@ -111,23 +113,24 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
         `🟢 *Drishti Security - New Order*\n\n` +
         `*Order ID:* #${newOrderId}\n` +
         `*Product:* ${product.name}\n` +
-        `*Amount Paid:* ₹${Number(product.price).toLocaleString()}` + 
+        `*Amount Paid:* ₹${Number(secureTotal).toLocaleString()}` + 
         couponText + `\n` +
         `*Payment:* ${paymentText}\n\n` +
         `*Customer:* ${firstName} ${lastName}\n` +
         `*Phone:* ${phone}\n` +
         `*Address:* ${fullAddress}` +
-        (address.lat ? `\n*Map Location:* https://maps.google.com/?q=${address.lat},${address.lng}` : '')
+        (address.lat ? `\n*Map Location:* https://maps.google.com/?q=$${address.lat},${address.lng}` : '')
       );
 
-      const targetNumber = (settings?.whatsapp_number || "919812366805").replace(/\D/g, ''); 
+      const targetNumber = (settings?.whatsapp_number || "919812019772").replace(/\D/g, ''); 
       window.open(`https://wa.me/${targetNumber}?text=${msg}`, "_blank");
       
       onSuccess?.();
       setIsSuccess(true); 
       
     } catch (err: any) {
-      console.error(err);
+      console.error("Checkout error:", err);
+      // If you have a toast notification system, trigger it here!
     } finally {
       setLoading(false);
     }
