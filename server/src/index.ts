@@ -12,6 +12,7 @@ app.use(cors());
 app.use(express.json());
 
 app.post('/api/orders/checkout', createOrder);
+app.post('/api/orders/verify-payment', verifyPayment);
 
 app.get('/', (req, res) => {
   res.send('Drishti Security API is running securely! 🛡️');
