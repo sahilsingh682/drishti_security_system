@@ -96,7 +96,7 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
       (address.lat ? `\n*Map Location:* https://maps.google.com/?q=$${address.lat},${address.lng}` : '')
     );
 
-    const targetNumber = (settings?.whatsapp_number || "919812019772").replace(/\D/g, ''); 
+    const targetNumber = (settings?.whatsapp || "919812019772").replace(/\D/g, ''); 
     window.open(`https://wa.me/${targetNumber}?text=${msg}`, "_blank");
     
     onSuccess?.();

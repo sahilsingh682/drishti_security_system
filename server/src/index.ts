@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { createOrder } from './controllers/OrderController';
+import { createOrder, verifyPayment } from './controllers/OrderController';
 
 dotenv.config();
 
