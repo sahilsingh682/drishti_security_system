@@ -10,7 +10,7 @@ jspm_packages/
 .env.production.local
 
 # Build outputs
-dist/
+dist/   
 build/
 .next/
 out/
