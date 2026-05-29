@@ -16,17 +16,17 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
 
       if (error || !product) continue;
 
-      // Safely grab quantity (cart uses .quantity, older code used .qty)
       const qty = item.qty || item.quantity || 1;
       
       calculatedTotal += (product.price * qty);
       secureItems.push({ id: item.id, name: product.name, price: product.price, qty: qty });
     }
 
-    // Bulletproof fallback to prevent NaN/null database crashes
-    const finalAmount = !isNaN(calculatedTotal) && calculatedTotal > 0 
-      ? calculatedTotal 
-      : (Number(frontendTotal) || 0);
+    // 🚀 THE FIX: Respect the frontend's discounted price!
+    // If the cart sends a valid discounted total, we use it. If not, we fall back to the raw calculated total.
+    const finalAmount = frontendTotal !== undefined && frontendTotal !== null 
+      ? Number(frontendTotal) 
+      : calculatedTotal;
 
     const orderId = "ORD-" + Math.floor(100000 + Math.random() * 900000);
     
@@ -36,8 +36,8 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
         id: orderId,
         customer_name: customerDetails.name,
         phone: customerDetails.phone,
-        delivery_address: customerDetails.address, // <-- Bonus Fix: Now saves address!
-        total_amount: finalAmount,
+        delivery_address: customerDetails.address,
+        total_amount: finalAmount, // Now it correctly saves the discounted ₹9,540!
         items: JSON.stringify(secureItems),
         payment_status: 'pending'
       });
