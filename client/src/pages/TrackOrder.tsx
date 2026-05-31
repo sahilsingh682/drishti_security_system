@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Package, Clock, MapPin, Calendar, ShieldCheck, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,15 @@ export default function TrackOrder() {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [order, setOrder] = useState<any>(null);
+
+  // 🚀 NEW: Magic Autofill Effect
+  useEffect(() => {
+    const savedOrder = localStorage.getItem('drishti_recent_order');
+    const savedPhone = localStorage.getItem('drishti_recent_phone');
+    
+    if (savedOrder) setOrderId(savedOrder);
+    if (savedPhone) setPhone(savedPhone);
+  }, []);
 
   const handleTrack = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -12,6 +12,9 @@ import { AddressInput, type AddressData } from "@/components/AddressInput";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 
+// 🚀 NEW: Import the Soft Wall Modal
+import CheckoutAuthModal from "@/components/CheckoutAuthModal";
+
 const loadRazorpayScript = () => {
   return new Promise((resolve) => {
     const script = document.createElement("script");
@@ -29,7 +32,6 @@ export default function Checkout() {
   const location = useLocation();
   const navigate = useNavigate();
   
-  // Extract cart data passed from the Cart page
   const product = location.state?.product;
 
   const [activeStep, setActiveStep] = useState("step-1");
@@ -37,6 +39,10 @@ export default function Checkout() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [generatedOrderId, setGeneratedOrderId] = useState(""); 
   const [whatsappLink, setWhatsappLink] = useState(""); 
+  
+  // 🚀 NEW: Soft Wall States
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [guestApproved, setGuestApproved] = useState(false);
   
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -46,13 +52,22 @@ export default function Checkout() {
     pincode: "", city: "", state: "", houseNo: "", society: "", landmark: "", area: "",
   });
 
-  // Security Check: If someone navigates to /checkout without a cart, send them back!
   useEffect(() => {
     if (!product) {
       toast.error("Your cart is empty or data is missing.");
       navigate("/cart");
     }
   }, [product, navigate]);
+
+  // 🚀 NEW: The Interceptor Logic
+  useEffect(() => {
+    // If there is no user, they haven't explicitly clicked "continue as guest", and they haven't already paid... Pop the wall!
+    if (!user && !guestApproved && !isSuccess && product) {
+      setShowAuthModal(true);
+    } else {
+      setShowAuthModal(false);
+    }
+  }, [user, guestApproved, isSuccess, product]);
 
   useEffect(() => {
     if (profile && !isSuccess) {
@@ -102,7 +117,8 @@ export default function Checkout() {
     
     setWhatsappLink(link);
     setGeneratedOrderId(orderId);
-    
+    localStorage.setItem('drishti_recent_order', orderId);
+    localStorage.setItem('drishti_recent_phone', phone);
     setIsSuccess(true); 
     setLoading(false);
     clearCart(); 
@@ -211,6 +227,17 @@ export default function Checkout() {
 
   return (
     <div className="min-h-screen bg-muted/10 pt-24 pb-12 px-4">
+      
+      {/* 🚀 NEW: The Soft Wall Modal Component injected here */}
+      <CheckoutAuthModal 
+        isOpen={showAuthModal} 
+        setIsOpen={setShowAuthModal} 
+        proceedToGuestCheckout={() => {
+          setShowAuthModal(false);
+          setGuestApproved(true);
+        }} 
+      />
+
       <div className="container mx-auto max-w-4xl">
         
         {/* Secure Header */}
@@ -393,10 +420,17 @@ export default function Checkout() {
                 <Link to="/store">
                   <Button variant="outline" className="font-bold">Continue Shopping</Button>
                 </Link>
-                {user && (
+                {user ? (
                   <Link to="/profile">
                     <Button className="font-bold flex items-center gap-2">
                       Track Order <ArrowRight className="w-4 h-4" />
+                    </Button>
+                  </Link>
+                ) : (
+                  // 🚀 NEW: Link guests to the TrackOrder page they built!
+                  <Link to="/track-order">
+                    <Button className="font-bold flex items-center gap-2">
+                      Track as Guest <ArrowRight className="w-4 h-4" />
                     </Button>
                   </Link>
                 )}
