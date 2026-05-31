@@ -307,13 +307,13 @@ const Store = () => {
                   >
                     <ShoppingCart className="w-4 h-4 mr-2" /> Add to Cart
                   </Button>
-                  <Button
+                  {/* <Button
                     variant="outline"
                     className="flex-1 border-border/40 rounded-xl h-12 text-sm font-semibold"
                     onClick={() => { setSelected(null); setCheckoutProduct(selected); }}
                   >
                     <MessageCircle className="w-4 h-4 mr-2" /> WhatsApp
-                  </Button>
+                  </Button> */}
                 </div>
               </div>
             </motion.div>

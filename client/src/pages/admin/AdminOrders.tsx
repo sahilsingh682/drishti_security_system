@@ -5,7 +5,7 @@ import {
   ShoppingBag, Phone, MapPin, Wrench, Package, 
   CreditCard, ShieldCheck, Search, ChevronDown, ChevronUp, 
   PlayCircle, CheckCircle2, Calendar, XCircle, User,
-  ClipboardList, FileText, Printer, ArrowLeft, Truck
+  ClipboardList, FileText, Printer, ArrowLeft, Truck, Download, Filter
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,16 +24,55 @@ const parseAddress = (addr: any): string => {
   }
 };
 
+// 📊 CSV Export Utility
+const exportToCSV = (ordersToExport: any[]) => {
+  if (ordersToExport.length === 0) return;
+
+  const headers = ["Order ID", "Date", "Customer Name", "Phone", "Total Amount", "Payment Status", "Install Status", "Address"];
+  const csvRows = [headers.join(",")];
+
+  ordersToExport.forEach(order => {
+    const row = [
+      order.id,
+      new Date(order.created_at).toLocaleDateString(),
+      `"${order.customer_name}"`, 
+      order.phone,
+      order.total_amount,
+      order.payment_status,
+      order.install_status,
+      `"${parseAddress(order.delivery_address)}"` 
+    ];
+    csvRows.push(row.join(","));
+  });
+
+  const csvContent = "data:text/csv;charset=utf-8," + csvRows.join("\n");
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `Drishti_Orders_${new Date().toISOString().split('T')[0]}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  toast.success(`Exported ${ordersToExport.length} orders to CSV`);
+};
+
 export default function AdminOrders() {
   const { settings } = useSettings(); 
   const [orders, setOrders] = useState<any[]>([]);
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // 🚀 Filters & State
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [customWarrantyFields, setCustomWarrantyFields] = useState<Record<string, boolean>>({});
-  
   const [invoiceOrder, setInvoiceOrder] = useState<any>(null);
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
 
   const fetchData = async () => {
     try {
@@ -73,12 +112,82 @@ export default function AdminOrders() {
 
   const toggleExpand = (id: string) => setExpandedId(expandedId === id ? null : id);
 
-  const filteredOrders = orders.filter(order => 
-    (order.customer_name || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
-    order.id.includes(searchTerm)
-  );
+  const toggleSelectOrder = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newSelected = new Set(selectedOrders);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedOrders(newSelected);
+  };
 
-  // 🖨️ INVOICE RENDERER
+  // 🚀 Multi-level Filtering Engine
+  const filteredOrders = orders.filter(order => {
+    const matchesSearch = (order.customer_name || "").toLowerCase().includes(searchTerm.toLowerCase()) || order.id.includes(searchTerm);
+    const matchesStatus = statusFilter === "all" || order.install_status === statusFilter;
+
+    let matchesDate = true;
+    if (dateFilter !== "all") {
+      const orderDate = new Date(order.created_at);
+      orderDate.setHours(0, 0, 0, 0);
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+
+      if (dateFilter === "today") {
+        matchesDate = orderDate.getTime() === now.getTime();
+      } else if (dateFilter === "7days") {
+        const sevenDaysAgo = new Date(now);
+        sevenDaysAgo.setDate(now.getDate() - 7);
+        matchesDate = orderDate >= sevenDaysAgo;
+      } else if (dateFilter === "30days") {
+        const thirtyDaysAgo = new Date(now);
+        thirtyDaysAgo.setDate(now.getDate() - 30);
+        matchesDate = orderDate >= thirtyDaysAgo;
+      } else if (dateFilter === "custom") {
+        if (startDate && endDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          matchesDate = orderDate >= start && orderDate <= end;
+        } else if (startDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          matchesDate = orderDate >= start;
+        }
+      }
+    }
+    return matchesSearch && matchesStatus && matchesDate;
+  });
+
+  const selectAll = () => {
+    if (selectedOrders.size === filteredOrders.length && filteredOrders.length > 0) {
+      setSelectedOrders(new Set());
+    } else {
+      setSelectedOrders(new Set(filteredOrders.map(o => o.id)));
+    }
+  };
+
+  const handleBulkDispatch = async () => {
+    const toastId = toast.loading("Updating orders...");
+    try {
+      const ordersToUpdate = orders.filter(o => selectedOrders.has(o.id) && o.install_status === 'pending');
+      if (ordersToUpdate.length === 0) {
+        toast.error("Selected orders are already dispatched or delivered!", { id: toastId });
+        return;
+      }
+      const promises = ordersToUpdate.map(order => supabase.from("orders").update({ install_status: 'in_progress' }).eq("id", order.id));
+      await Promise.all(promises);
+      toast.success(`${ordersToUpdate.length} orders marked as Dispatched!`, { id: toastId });
+      setSelectedOrders(new Set());
+      fetchData();
+    } catch (error) {
+      toast.error("Failed to update orders.", { id: toastId });
+    }
+  };
+
   if (invoiceOrder) {
     let invoiceItems = [];
     try { invoiceItems = typeof invoiceOrder.items === 'string' ? JSON.parse(invoiceOrder.items) : (invoiceOrder.items || []); } catch (e) { invoiceItems = []; }
@@ -121,7 +230,7 @@ export default function AdminOrders() {
               </div>
               <div className="text-right">
                  <h2 className="text-4xl font-black text-gray-200 uppercase tracking-widest">Tax Invoice</h2>
-                 <p className="text-sm font-bold text-gray-800 mt-2">INV-{invoiceOrder.id.slice(0, 8).toUpperCase()}</p>
+                 <p className="text-sm font-bold text-gray-800 mt-2">INV-{invoiceOrder.id.toUpperCase()}</p>
                  <p className="text-xs font-semibold text-gray-500 mt-1">Date: {new Date(invoiceOrder.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
                  <div className="mt-4 inline-block px-3 py-1 bg-gray-100 rounded text-xs font-black text-gray-600 uppercase">
                     Status: {invoiceOrder.payment_status === 'paid' ? 'PAID / COMPLETED' : 'PAYMENT PENDING'}
@@ -196,7 +305,6 @@ export default function AdminOrders() {
                  )}
 
                  <div className="flex justify-between text-sm font-bold text-gray-600 pt-2 border-t border-gray-100 mt-2">
-                    {/* 🚀 FIXED: Dynamic Taxable Value Label */}
                     <span>Taxable Value {hasDiscount ? '(Post Discount)' : ''}:</span>
                     <span>₹{baseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                  </div>
@@ -227,191 +335,299 @@ export default function AdminOrders() {
     );
   }
 
-  // 💻 MAIN ADMIN DASHBOARD UI
   if (loading) return <div className="p-20 text-center font-black text-primary animate-pulse tracking-widest uppercase">Syncing Dashboard...</div>;
 
   return (
-    <div className="space-y-4 max-w-6xl mx-auto px-2 pb-24 pt-4 print:hidden">
-      <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-md pb-4 pt-2 border-b flex gap-3 items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search Customer..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 h-11 rounded-xl bg-card border-primary/20" />
+    <div className="space-y-4 max-w-6xl mx-auto px-2 pb-32 pt-4 print:hidden relative">
+      <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-md pb-4 pt-2 border-b flex flex-col gap-3">
+        {/* Top Row: Search and Select All */}
+        <div className="flex gap-3 items-center w-full">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input 
+              placeholder="Search Customer or Order ID..." 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
+              className="pl-9 h-11 rounded-xl bg-card border-primary/20 focus-visible:ring-1 focus-visible:ring-primary/50" 
+            />
+          </div>
+          <Button variant="outline" onClick={selectAll} className="h-11 rounded-xl text-xs font-bold shrink-0">
+            {selectedOrders.size === filteredOrders.length && filteredOrders.length > 0 ? "Deselect All" : "Select All"}
+          </Button>
+        </div>
+
+        {/* Bottom Row: Filters */}
+        <div className="flex gap-3 w-full overflow-x-auto custom-scrollbar pb-1 items-center">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-10 rounded-xl min-w-[140px] font-bold text-xs bg-card border-primary/20 focus:ring-0 focus:ring-offset-0">
+              <div className="flex items-center gap-2">
+                <Filter className="w-3.5 h-3.5 text-primary" />
+                <SelectValue placeholder="Status" />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="pending">🟠 Pending</SelectItem>
+              <SelectItem value="in_progress">🚚 Dispatched</SelectItem>
+              <SelectItem value="completed">✅ Delivered</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={dateFilter} onValueChange={setDateFilter}>
+            <SelectTrigger className="h-10 rounded-xl min-w-[140px] font-bold text-xs bg-card border-primary/20 focus:ring-0 focus:ring-offset-0">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-3.5 h-3.5 text-primary" />
+                <SelectValue placeholder="Date" />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Time</SelectItem>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="7days">Last 7 Days</SelectItem>
+              <SelectItem value="30days">Last 30 Days</SelectItem>
+              <SelectItem value="custom">📅 Custom Range</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <AnimatePresence>
+            {dateFilter === "custom" && (
+              <motion.div 
+                initial={{ opacity: 0, width: 0, scale: 0.9 }}
+                animate={{ opacity: 1, width: "auto", scale: 1 }}
+                exit={{ opacity: 0, width: 0, scale: 0.9 }}
+                className="flex items-center gap-2 overflow-hidden shrink-0"
+              >
+                <Input 
+                  type="date" 
+                  value={startDate} 
+                  onChange={(e) => setStartDate(e.target.value)} 
+                  className="h-10 rounded-xl text-[10px] font-bold bg-card border-primary/20 min-w-[120px]"
+                />
+                <span className="text-xs font-black text-muted-foreground uppercase">TO</span>
+                <Input 
+                  type="date" 
+                  value={endDate} 
+                  onChange={(e) => setEndDate(e.target.value)} 
+                  className="h-10 rounded-xl text-[10px] font-bold bg-card border-primary/20 min-w-[120px]"
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
       <div className="space-y-3">
-        {filteredOrders.map((order) => {
-          const isExp = expandedId === order.id;
-          const isPaid = order.payment_status === 'paid';
-          const isTechRequired = (order.installation_type || 'technician') === 'technician';
-          let items = [];
-          try { items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []); } catch (e) { items = []; }
+        {filteredOrders.length === 0 ? (
+           <div className="text-center py-12 text-muted-foreground font-bold">No orders found matching your filters.</div>
+        ) : (
+          filteredOrders.map((order) => {
+            const isExp = expandedId === order.id;
+            const isPaid = order.payment_status === 'paid';
+            const isTechRequired = (order.installation_type || 'technician') === 'technician';
+            const isSelected = selectedOrders.has(order.id);
+            let items = [];
+            try { items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []); } catch (e) { items = []; }
 
-          return (
-            <motion.div layout key={order.id} className={`group border rounded-2xl transition-all overflow-hidden bg-card/50 ${isExp ? 'border-primary ring-2 ring-primary/5 shadow-xl' : 'border-border/40'}`}>
-              
-              <div onClick={() => toggleExpand(order.id)} className="p-3 md:p-4 cursor-pointer flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${isPaid ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-500'}`}>
-                    {order.customer_name?.charAt(0)}
+            return (
+              <motion.div layout key={order.id} className={`group border rounded-2xl transition-all overflow-hidden bg-card/50 ${isExp ? 'border-primary ring-2 ring-primary/5 shadow-xl' : 'border-border/40'} ${isSelected ? 'bg-primary/5 border-primary/50' : ''}`}>
+                
+                <div onClick={() => toggleExpand(order.id)} className="p-3 md:p-4 cursor-pointer flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-4 min-w-0">
+                    <div 
+                      onClick={(e) => toggleSelectOrder(order.id, e)}
+                      className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'bg-primary border-primary' : 'border-muted-foreground/30 hover:border-primary/50'}`}
+                    >
+                      {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                    </div>
+
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${isPaid ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-500'}`}>
+                      {order.customer_name?.charAt(0)}
+                    </div>
+                    <div className="truncate">
+                      <h3 className="font-bold text-sm md:text-base truncate leading-tight">{order.customer_name}</h3>
+                      <div className="flex items-center gap-2 mt-0.5">
+                         <span className="text-[10px] font-mono font-bold opacity-40">#{order.id.toUpperCase()}</span>
+                         <span className="text-[9px] bg-primary/5 text-primary px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">{order.install_status}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="truncate">
-                    <h3 className="font-bold text-sm md:text-base truncate leading-tight">{order.customer_name}</h3>
-                    <div className="flex items-center gap-2 mt-0.5">
-                       <span className="text-[10px] font-mono font-bold opacity-40">#{order.id.slice(0, 8).toUpperCase()}</span>
-                       <span className="text-[9px] bg-primary/5 text-primary px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">{order.install_status}</span>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <p className="text-xs font-black text-primary">₹{Number(order.total_amount || 0).toLocaleString('en-IN')}</p>
+                      <p className="text-[9px] font-bold opacity-40 uppercase">{new Date(order.created_at).toLocaleDateString()}</p>
+                    </div>
+                    <div className={`p-1.5 rounded-full transition-colors ${isExp ? 'bg-primary text-white' : 'bg-muted opacity-40'}`}>
+                      {isExp ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <p className="text-xs font-black text-primary">₹{Number(order.total_amount || 0).toLocaleString('en-IN')}</p>
-                    <p className="text-[9px] font-bold opacity-40 uppercase">{new Date(order.created_at).toLocaleDateString()}</p>
-                  </div>
-                  <div className={`p-1.5 rounded-full transition-colors ${isExp ? 'bg-primary text-white' : 'bg-muted opacity-40'}`}>
-                    {isExp ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  </div>
-                </div>
-              </div>
 
-              <AnimatePresence>
-                {isExp && (
-                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="border-t border-border/20 bg-primary/[0.01]">
-                    <div className="p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-                      
-                      <div className="lg:col-span-3 space-y-5">
-                        <div className="space-y-4">
-                           <div className="space-y-1">
-                              <Label className="text-[9px] uppercase font-black opacity-40 flex items-center gap-1.5"><Phone className="w-3 h-3" /> Contact</Label>
-                              <a href={`tel:${order.phone}`} className="text-sm font-black block text-primary">{order.phone}</a>
-                           </div>
-                           <div className="space-y-2">
-                              <Label className="text-[9px] uppercase font-black opacity-40">Payment</Label>
-                              <div className="flex flex-col gap-2">
-                                {/* 🚀 FIXED BUG 1: Dropdown mein ab 'pending' match ho jayega */}
-                                <Select value={order.payment_status || 'pending'} onValueChange={(val) => updateOrder(order.id, { payment_status: val })}>
-                                  <SelectTrigger className={`h-9 text-[10px] font-bold ${isPaid ? 'bg-green-500/10 text-green-600 border-green-500/20' : 'bg-orange-500/10 text-orange-600 border-orange-500/20'}`}><SelectValue /></SelectTrigger>
-                                  <SelectContent><SelectItem value="pending">PENDING</SelectItem><SelectItem value="paid">PAID ✅</SelectItem><SelectItem value="failed">FAILED ❌</SelectItem></SelectContent>
-                                </Select>
-                                {isPaid && (
-                                  <Select value={order.payment_method || 'cash'} onValueChange={(val) => updateOrder(order.id, { payment_method: val })}>
-                                    <SelectTrigger className="h-9 text-[10px] font-bold bg-background border-border/40"><SelectValue placeholder="Method" /></SelectTrigger>
-                                    <SelectContent><SelectItem value="cash">💵 CASH</SelectItem><SelectItem value="upi">📱 UPI</SelectItem><SelectItem value="bank">🏦 BANK</SelectItem></SelectContent>
+                <AnimatePresence>
+                  {isExp && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="border-t border-border/20 bg-primary/[0.01]">
+                      <div className="p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                        
+                        <div className="lg:col-span-3 space-y-5">
+                          <div className="space-y-4">
+                             <div className="space-y-1">
+                                <Label className="text-[9px] uppercase font-black opacity-40 flex items-center gap-1.5"><Phone className="w-3 h-3" /> Contact</Label>
+                                <a href={`tel:${order.phone}`} className="text-sm font-black block text-primary">{order.phone}</a>
+                             </div>
+                             <div className="space-y-2">
+                                <Label className="text-[9px] uppercase font-black opacity-40">Payment</Label>
+                                <div className="flex flex-col gap-2">
+                                  <Select value={order.payment_status || 'pending'} onValueChange={(val) => updateOrder(order.id, { payment_status: val })}>
+                                    <SelectTrigger className={`h-9 text-[10px] font-bold ${isPaid ? 'bg-green-500/10 text-green-600 border-green-500/20' : 'bg-orange-500/10 text-orange-600 border-orange-500/20'}`}><SelectValue /></SelectTrigger>
+                                    <SelectContent><SelectItem value="pending">PENDING</SelectItem><SelectItem value="paid">PAID ✅</SelectItem><SelectItem value="failed">FAILED ❌</SelectItem></SelectContent>
                                   </Select>
-                                )}
-                              </div>
-                           </div>
-                           <div className="space-y-1">
-                            <Label className="text-[9px] uppercase font-black opacity-40">Installation</Label>
-                            <Select value={order.installation_type || 'technician'} onValueChange={(val) => updateOrder(order.id, { installation_type: val })}>
-                              <SelectTrigger className="h-9 text-[10px] font-bold bg-background"><SelectValue /></SelectTrigger>
-                              <SelectContent><SelectItem value="technician">👷 TECH TEAM</SelectItem><SelectItem value="self">🏠 SELF INSTALL</SelectItem></SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <div className="p-3 rounded-xl bg-muted/20 border border-border/10">
-                          <Label className="text-[9px] uppercase font-black opacity-40 flex items-center gap-1.5"><MapPin className="w-3 h-3" /> Address</Label>
-                          <p className="text-[11px] font-bold leading-relaxed text-muted-foreground mt-1">{parseAddress(order.delivery_address)}</p>
-                        </div>
-                      </div>
-
-                      <div className="lg:col-span-5 space-y-3">
-                        <Label className="text-[9px] uppercase font-black text-primary flex items-center gap-2"><Package className="w-4 h-4" /> Item Inventory</Label>
-                        <div className="space-y-2 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
-                          {items.map((item: any, idx: number) => {
-                            const fieldKey = `${order.id}-${idx}`;
-                            const isCustom = customWarrantyFields[fieldKey];
-                            const itemPrice = parseFloat(item.price) || 0;
-                            const qty = item.quantity || item.qty || 1;
-                            const itemTotal = itemPrice * qty;
-                            
-                            return (
-                              <div key={idx} className="bg-background/80 p-3 rounded-xl border border-border/40 space-y-2 shadow-sm">
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className="text-xs font-bold truncate pr-2">{item.name.replace(/\[Applied Coupon:.*?\]/g, '').trim()}</span>
-                                  <span className="text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded">x{qty} - ₹{itemTotal.toLocaleString('en-IN')}</span>
-                                </div>
-                                <div className="flex gap-2 items-center">
-                                  {/* 🚀 FIXED BUG 2: Multi-qty ke liye lamba dabba aur better hint */}
-                                  <Input 
-                                    placeholder={qty > 1 ? "Enter multiple Serial Nos (comma separated)..." : "Serial No."} 
-                                    defaultValue={item.serial_number} 
-                                    className="h-8 text-[10px] font-mono bg-muted/20 border-border/40 flex-1" 
-                                    onBlur={(e) => updateItemData(order, idx, 'serial_number', e.target.value)} 
-                                  />
-                                  {!isCustom ? (
-                                    <Select value={String(item.warranty_months || 12)} onValueChange={(val) => val === "custom" ? setCustomWarrantyFields({...customWarrantyFields, [fieldKey]: true}) : updateItemData(order, idx, 'warranty_months', parseInt(val))}>
-                                      <SelectTrigger className="h-8 w-20 text-[10px] font-bold border-none bg-muted/20 shrink-0"><SelectValue /></SelectTrigger>
-                                      <SelectContent><SelectItem value="6">6M</SelectItem><SelectItem value="12">1Y</SelectItem><SelectItem value="24">2Y</SelectItem><SelectItem value="custom">✏️ Custom</SelectItem></SelectContent>
+                                  {isPaid && (
+                                    <Select value={order.payment_method || 'cash'} onValueChange={(val) => updateOrder(order.id, { payment_method: val })}>
+                                      <SelectTrigger className="h-9 text-[10px] font-bold bg-background border-border/40"><SelectValue placeholder="Method" /></SelectTrigger>
+                                      <SelectContent><SelectItem value="cash">💵 CASH</SelectItem><SelectItem value="upi">📱 UPI</SelectItem><SelectItem value="bank">🏦 BANK</SelectItem></SelectContent>
                                     </Select>
-                                  ) : (
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      <Input type="number" placeholder="Months" className="h-8 w-16 text-[10px]" autoFocus onBlur={(e) => {
-                                        updateItemData(order, idx, 'warranty_months', parseInt(e.target.value));
-                                        setCustomWarrantyFields({...customWarrantyFields, [fieldKey]: false});
-                                      }} />
-                                      <XCircle className="w-3.5 h-3.5 text-destructive cursor-pointer" onClick={() => setCustomWarrantyFields({...customWarrantyFields, [fieldKey]: false})} />
-                                    </div>
                                   )}
                                 </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="lg:col-span-4 space-y-5 border-t lg:border-t-0 lg:border-l border-border/20 pt-5 lg:pt-0 lg:pl-6 relative">
-                        {isTechRequired ? (
-                          <div className="space-y-4">
-                            <div className="space-y-1.5">
-                              <Label className="text-[9px] uppercase font-black text-primary flex items-center gap-1.5"><User className="w-3 h-3" /> Assign Expert</Label>
-                              <Select value={order.assigned_technician_id || "none"} onValueChange={(val) => updateOrder(order.id, { assigned_technician_id: val === "none" ? null : val })}>
-                                <SelectTrigger className="h-10 text-[11px] font-bold"><SelectValue placeholder="Staff..." /></SelectTrigger>
-                                <SelectContent><SelectItem value="none">UNASSIGNED</SelectItem>{staff.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                             </div>
+                             <div className="space-y-1">
+                              <Label className="text-[9px] uppercase font-black opacity-40">Installation</Label>
+                              <Select value={order.installation_type || 'technician'} onValueChange={(val) => updateOrder(order.id, { installation_type: val })}>
+                                <SelectTrigger className="h-9 text-[10px] font-bold bg-background"><SelectValue /></SelectTrigger>
+                                <SelectContent><SelectItem value="technician">👷 TECH TEAM</SelectItem><SelectItem value="self">🏠 SELF INSTALL</SelectItem></SelectContent>
                               </Select>
                             </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-[9px] uppercase font-black opacity-40 flex items-center gap-1.5"><ClipboardList className="w-3 h-3" /> Progress Logs</Label>
-                              <textarea className="w-full h-16 bg-muted/20 rounded-xl p-2.5 text-[11px] font-medium resize-none border-none outline-none focus:ring-1 focus:ring-primary/20" placeholder="Type logs..." defaultValue={order.technician_notes} onBlur={(e) => updateOrder(order.id, { technician_notes: e.target.value })} />
-                            </div>
                           </div>
-                        ) : (
-                          <div className="h-32 flex flex-col items-center justify-center border border-dashed rounded-2xl bg-muted/5">
-                             <p className="text-[10px] font-black uppercase tracking-widest text-center">Self Installation<br/>No Team Required</p>
+                          <div className="p-3 rounded-xl bg-muted/20 border border-border/10">
+                            <Label className="text-[9px] uppercase font-black opacity-40 flex items-center gap-1.5"><MapPin className="w-3 h-3" /> Address</Label>
+                            <p className="text-[11px] font-bold leading-relaxed text-muted-foreground mt-1">{parseAddress(order.delivery_address)}</p>
                           </div>
-                        )}
+                        </div>
 
-                        {/* 🚀 FIXED BUG 3: Self Install ke buttons Dispatch/Delivered ho gaye */}
-                        <div className="grid grid-cols-2 gap-3 pt-2">
-                          <Button onClick={() => updateOrder(order.id, { install_status: 'in_progress' })} className={`h-11 rounded-xl text-xs font-black shadow-lg ${order.install_status === 'in_progress' ? 'bg-primary' : 'bg-muted text-foreground'}`}>
-                            {isTechRequired ? <><PlayCircle className="w-4 h-4 mr-2" /> START</> : <><Truck className="w-4 h-4 mr-2" /> DISPATCH</>}
-                          </Button>
-                          <Button onClick={() => updateOrder(order.id, { install_status: 'completed' })} className={`h-11 rounded-xl text-xs font-black shadow-lg ${order.install_status === 'completed' ? 'bg-green-600' : 'bg-muted text-foreground'}`}>
-                            <CheckCircle2 className="w-4 h-4 mr-2" /> {isTechRequired ? 'DONE' : 'DELIVERED'}
+                        <div className="lg:col-span-5 space-y-3">
+                          <Label className="text-[9px] uppercase font-black text-primary flex items-center gap-2"><Package className="w-4 h-4" /> Item Inventory</Label>
+                          <div className="space-y-2 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+                            {items.map((item: any, idx: number) => {
+                              const fieldKey = `${order.id}-${idx}`;
+                              const isCustom = customWarrantyFields[fieldKey];
+                              const itemPrice = parseFloat(item.price) || 0;
+                              const qty = item.quantity || item.qty || 1;
+                              const itemTotal = itemPrice * qty;
+                              
+                              return (
+                                <div key={idx} className="bg-background/80 p-3 rounded-xl border border-border/40 space-y-2 shadow-sm">
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-xs font-bold truncate pr-2">{item.name.replace(/\[Applied Coupon:.*?\]/g, '').trim()}</span>
+                                    <span className="text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded">x{qty} - ₹{itemTotal.toLocaleString('en-IN')}</span>
+                                  </div>
+                                  <div className="flex gap-2 items-center">
+                                    <Input 
+                                      placeholder={qty > 1 ? "Enter multiple Serial Nos (comma separated)..." : "Serial No."} 
+                                      defaultValue={item.serial_number} 
+                                      className="h-8 text-[10px] font-mono bg-muted/20 border-border/40 flex-1" 
+                                      onBlur={(e) => updateItemData(order, idx, 'serial_number', e.target.value)} 
+                                    />
+                                    {!isCustom ? (
+                                      <Select value={String(item.warranty_months || 12)} onValueChange={(val) => val === "custom" ? setCustomWarrantyFields({...customWarrantyFields, [fieldKey]: true}) : updateItemData(order, idx, 'warranty_months', parseInt(val))}>
+                                        <SelectTrigger className="h-8 w-20 text-[10px] font-bold border-none bg-muted/20 shrink-0"><SelectValue /></SelectTrigger>
+                                        <SelectContent><SelectItem value="6">6M</SelectItem><SelectItem value="12">1Y</SelectItem><SelectItem value="24">2Y</SelectItem><SelectItem value="custom">✏️ Custom</SelectItem></SelectContent>
+                                      </Select>
+                                    ) : (
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <Input type="number" placeholder="Months" className="h-8 w-16 text-[10px]" autoFocus onBlur={(e) => {
+                                          updateItemData(order, idx, 'warranty_months', parseInt(e.target.value));
+                                          setCustomWarrantyFields({...customWarrantyFields, [fieldKey]: false});
+                                        }} />
+                                        <XCircle className="w-3.5 h-3.5 text-destructive cursor-pointer" onClick={() => setCustomWarrantyFields({...customWarrantyFields, [fieldKey]: false})} />
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="lg:col-span-4 space-y-5 border-t lg:border-t-0 lg:border-l border-border/20 pt-5 lg:pt-0 lg:pl-6 relative">
+                          {isTechRequired ? (
+                            <div className="space-y-4">
+                              <div className="space-y-1.5">
+                                <Label className="text-[9px] uppercase font-black text-primary flex items-center gap-1.5"><User className="w-3 h-3" /> Assign Expert</Label>
+                                <Select value={order.assigned_technician_id || "none"} onValueChange={(val) => updateOrder(order.id, { assigned_technician_id: val === "none" ? null : val })}>
+                                  <SelectTrigger className="h-10 text-[11px] font-bold"><SelectValue placeholder="Staff..." /></SelectTrigger>
+                                  <SelectContent><SelectItem value="none">UNASSIGNED</SelectItem>{staff.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-[9px] uppercase font-black opacity-40 flex items-center gap-1.5"><ClipboardList className="w-3 h-3" /> Progress Logs</Label>
+                                <textarea className="w-full h-16 bg-muted/20 rounded-xl p-2.5 text-[11px] font-medium resize-none border-none outline-none focus:ring-1 focus:ring-primary/20" placeholder="Type logs..." defaultValue={order.technician_notes} onBlur={(e) => updateOrder(order.id, { technician_notes: e.target.value })} />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="h-32 flex flex-col items-center justify-center border border-dashed rounded-2xl bg-muted/5">
+                               <p className="text-[10px] font-black uppercase tracking-widest text-center">Self Installation<br/>No Team Required</p>
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-2 gap-3 pt-2">
+                            <Button onClick={() => updateOrder(order.id, { install_status: 'in_progress' })} className={`h-11 rounded-xl text-xs font-black shadow-lg ${order.install_status === 'in_progress' ? 'bg-primary' : 'bg-muted text-foreground'}`}>
+                              {isTechRequired ? <><PlayCircle className="w-4 h-4 mr-2" /> START</> : <><Truck className="w-4 h-4 mr-2" /> DISPATCH</>}
+                            </Button>
+                            <Button onClick={() => updateOrder(order.id, { install_status: 'completed' })} className={`h-11 rounded-xl text-xs font-black shadow-lg ${order.install_status === 'completed' ? 'bg-green-600' : 'bg-muted text-foreground'}`}>
+                              <CheckCircle2 className="w-4 h-4 mr-2" /> {isTechRequired ? 'DONE' : 'DELIVERED'}
+                            </Button>
+                          </div>
+                          
+                          <Button 
+                            onClick={() => setInvoiceOrder(order)} 
+                            variant="outline"
+                            className="w-full h-11 rounded-xl text-xs font-black border-primary/20 hover:bg-primary/5 text-primary"
+                          >
+                            <FileText className="w-4 h-4 mr-2" /> GENERATE TAX INVOICE
                           </Button>
                         </div>
-                        
-                        <Button 
-                          onClick={() => setInvoiceOrder(order)} 
-                          variant="outline"
-                          className="w-full h-11 rounded-xl text-xs font-black border-primary/20 hover:bg-primary/5 text-primary"
-                        >
-                          <FileText className="w-4 h-4 mr-2" /> GENERATE TAX INVOICE
-                        </Button>
                       </div>
-                    </div>
 
-                    <div className="bg-primary/5 px-6 py-2 flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-primary/60 italic border-t border-border/10">
-                       <span>{isTechRequired ? `Expert: ${order.assigned_technician?.name || 'Awaiting'}` : 'Mode: Customer Self Install'}</span>
-                       <span>Current State: {order.install_status}</span>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          );
-        })}
+                      <div className="bg-primary/5 px-6 py-2 flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-primary/60 italic border-t border-border/10">
+                         <span>{isTechRequired ? `Expert: ${order.assigned_technician?.name || 'Awaiting'}` : 'Mode: Customer Self Install'}</span>
+                         <span>Current State: {order.install_status}</span>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            );
+          })
+        )}
       </div>
+
+      <AnimatePresence>
+        {selectedOrders.size > 0 && (
+          <motion.div 
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-card border border-primary/20 shadow-2xl rounded-2xl p-4 flex items-center gap-6"
+          >
+            <div className="font-bold text-sm">
+              <span className="text-primary">{selectedOrders.size}</span> orders selected
+            </div>
+            <div className="flex gap-3">
+              <Button 
+                onClick={() => exportToCSV(orders.filter(o => selectedOrders.has(o.id)))} 
+                variant="outline" 
+                className="h-10 rounded-xl text-xs font-black border-primary/20"
+              >
+                <Download className="w-4 h-4 mr-2" /> EXPORT CSV
+              </Button>
+              <Button 
+                onClick={handleBulkDispatch} 
+                className="h-10 rounded-xl text-xs font-black bg-primary shadow-lg shadow-primary/20"
+              >
+                <Truck className="w-4 h-4 mr-2" /> BULK DISPATCH
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

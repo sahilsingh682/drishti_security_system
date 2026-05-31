@@ -29,7 +29,7 @@ An enterprise-grade, full-stack e-commerce and administration platform tailored 
 * **Dynamic Animations:** Infinite scrolling client marquees, 3D tilt-effect product cards, and a custom surveillance-scanner cursor.
 
 ### 🔐 Admin Control Panel
-* **Role-Based Access Control (RBAC):** Strict separation of privileges between `User`, `Admin`, and `SuperAdmin`.
+* **Role-Based Access Control (RBAC):** Strict separation of privileges between `User`,`Technacian`,`Admin`, and `SuperAdmin`.
 * **Dashboard Analytics:** High-level metrics visualization (Revenue, Pending Installs, Low Stock) using Recharts.
 * **Advanced Order Management:** Full pipeline control. Admins can update payment statuses, schedule installations, generate instant GST Invoices, and log manual "Walk-in" orders.
 * **Content Management System (CMS):** Full CRUD capabilities for adding, editing, and removing products and security packages.

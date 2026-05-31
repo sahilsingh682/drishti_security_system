@@ -56,7 +56,7 @@ export const CustomCursor = () => {
           y: pos.y - 4,
           scale: hovering ? 0 : 1,
         }}
-        transition={{ type: "spring", stiffness: 500, damping: 28, mass: 0.5 }}
+        transition={{ type: "spring", stiffness: 5000, damping: 20, mass: 0.1 }}
       >
         <div className="w-2 h-2 rounded-full bg-primary" />
       </motion.div>
@@ -68,7 +68,7 @@ export const CustomCursor = () => {
           scale: hovering ? 1 : 0.4,
           opacity: hovering ? 0.8 : 0.3,
         }}
-        transition={{ type: "spring", stiffness: 300, damping: 25, mass: 0.8 }}
+        transition={{ type: "spring", stiffness: 3000, damping: 25, mass: 0.2 }}
       >
         <div className="w-10 h-10 rounded-full border-2 border-primary/60" style={{ boxShadow: "var(--glow-amber)" }} />
       </motion.div>

@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { createOrder, verifyPayment } from './controllers/OrderController';
+import orderRoutes from './routes/orderRoutes'; // 🚀 Added our new router
 
 dotenv.config();
 
@@ -11,8 +11,8 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-app.post('/api/orders/checkout', createOrder);
-app.post('/api/orders/verify-payment', verifyPayment);
+// 🚀 Plug in the router! Anything going to /api/orders will be handled by orderRoutes.ts
+app.use('/api/orders', orderRoutes);
 
 app.get('/', (req, res) => {
   res.send('Drishti Security API is running securely! 🛡️');

@@ -37,6 +37,7 @@ import AdminCoupons from "./pages/admin/AdminCoupons";
 import AdminStaff from "./pages/admin/AdminStaff"; 
 import TechnicianDashboard from "./pages/TechnicianDashboard";
 import TrackOrder from "./pages/TrackOrder";
+import Checkout from "./pages/Checkout";
 
 // 👇 VERCEL ANALYTICS IMPORTS ADDED HERE
 import { SpeedInsights } from "@vercel/speed-insights/react";
@@ -75,6 +76,8 @@ const App = () => (
                 <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                 <Route path="/technician" element={<ProtectedRoute><TechnicianDashboard /></ProtectedRoute>} />
                 <Route path="/track-order" element={<TrackOrder />} />
+                <Route path="/checkout" element={<Checkout />} />
+                
                 
                 {/* --- SECURE ADMIN ROUTES --- */}
                 <Route path="/admin" element={<ProtectedRoute requireAdmin><AdminLayout /></ProtectedRoute>}>

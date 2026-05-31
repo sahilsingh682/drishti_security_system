@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Phone, User, CheckCircle2, Wallet, Banknote, ArrowRight } from "lucide-react";
+import { Phone, User, CheckCircle2, Wallet, Banknote, ArrowRight, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,16 +9,9 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { AddressInput, type AddressData } from "@/components/AddressInput";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner"; // Used for payment failure notifications
+import { toast } from "sonner";
 
-interface Props {
-  product: any | null;
-  open: boolean;
-  onClose: () => void;
-  onSuccess?: () => void;
-}
-
-// Utility to securely load the Razorpay checkout script
+// 🚀 Restored Razorpay Script Loader
 const loadRazorpayScript = () => {
   return new Promise((resolve) => {
     const script = document.createElement("script");
@@ -29,6 +22,13 @@ const loadRazorpayScript = () => {
   });
 };
 
+interface Props {
+  product: any | null;
+  open: boolean;
+  onClose: () => void;
+  onSuccess?: () => void;
+}
+
 export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Props) => {
   const { user, profile } = useAuth();
   const { settings } = useSettings();
@@ -37,6 +37,7 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
   const [loading, setLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [generatedOrderId, setGeneratedOrderId] = useState(""); 
+  const [whatsappLink, setWhatsappLink] = useState(""); // Backup link if popup blocked
   
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -50,6 +51,7 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
     if (open) {
       setIsSuccess(false);
       setGeneratedOrderId("");
+      setWhatsappLink("");
     }
   }, [open]);
 
@@ -74,14 +76,13 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
     }
   }, [profile, open, isSuccess]);
 
-  // Helper function to generate and send the final WhatsApp message
-  const triggerWhatsApp = (orderId: string, finalTotal: number, paymentText: string) => {
+  // 🚀 The Bulletproof Success Handler
+  const triggerSuccessAndWhatsApp = (orderId: string, finalTotal: number, paymentText: string) => {
     const fullAddress = [
       address.houseNo, address.society, address.area, 
       address.landmark, address.city, address.state, address.pincode
     ].filter(Boolean).join(', ');
 
-    // Safely handle missing product data just in case the cart cleared too early!
     const productName = product?.name || "Drishti Security Equipment";
     const couponText = product?.appliedCouponCode ? `\n*Coupon Applied:* ${product.appliedCouponCode}` : '';
 
@@ -99,12 +100,22 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
     );
 
     const targetNumber = (settings?.whatsapp|| "919812019772").replace(/\D/g, ''); 
-    window.open(`https://wa.me/${targetNumber}?text=${msg}`, "_blank");
+    const link = `https://wa.me/${targetNumber}?text=${msg}`;
     
-    // NOW we safely tell the parent component (the Cart) that it can clear the items
-    onSuccess?.();
+    setWhatsappLink(link);
+    setGeneratedOrderId(orderId);
+    
+    // 1. SHOW SUCCESS SCREEN IMMEDIATELY (Prevents Panic)
     setIsSuccess(true); 
     setLoading(false);
+    onSuccess?.(); // Clear the cart safely
+
+    // 2. Safely attempt to open WhatsApp
+    try {
+      window.open(link, "_blank");
+    } catch (e) {
+      console.warn("Browser blocked the popup. Customer can use the manual button.");
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -116,7 +127,6 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
       const orderItems = product.rawItems || [{ id: product.id, name: product.name, qty: 1 }];
       const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
       
-      // 1. Create the Order on Backend
       const response = await fetch(`${API_URL}/api/orders/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -139,12 +149,9 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
 
       const newOrderId = data.orderId;
       const secureTotal = data.totalAmount;
-      setGeneratedOrderId(newOrderId);
 
-      // 2. Route based on Payment Method
+      // 🚀 RESTORED RAZORPAY LOGIC
       if (paymentMethod === 'online' && data.razorpayOrderId) {
-        
-        // Load Razorpay Script
         const res = await loadRazorpayScript();
         if (!res) {
           toast.error("Razorpay SDK failed to load. Are you online?");
@@ -152,17 +159,14 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
           return;
         }
 
-        // Configure the Razorpay popup
         const options = {
           key: import.meta.env.VITE_RAZORPAY_KEY_ID, 
-          amount: Math.round(secureTotal * 100), // paise
+          amount: Math.round(secureTotal * 100), 
           currency: "INR",
           name: "Drishti Security System",
           description: "Secure Checkout",
           order_id: data.razorpayOrderId,
           handler: async function (rzpResponse: any) {
-            
-            // 3. User paid! Verify cryptographic signature on the backend
             const verifyRes = await fetch(`${API_URL}/api/orders/verify-payment`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -177,32 +181,25 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
             const verifyData = await verifyRes.json();
             
             if (verifyData.success) {
-              // Verified! Send WhatsApp with "Paid" status
-              triggerWhatsApp(newOrderId, secureTotal, "Online Payment (Paid Successfully) ✅");
+              triggerSuccessAndWhatsApp(newOrderId, secureTotal, "Online Payment (Paid Successfully) ✅");
             } else {
               toast.error("Payment verification failed! Please contact support.");
               setLoading(false);
             }
           },
-          prefill: {
-            name: `${firstName} ${lastName}`.trim(),
-            contact: phone,
-          },
-          theme: {
-            color: "#0f172a", // Matches your primary branding
-          },
+          prefill: { name: `${firstName} ${lastName}`.trim(), contact: phone },
+          theme: { color: "#0f172a" },
         };
 
         const paymentObject = new (window as any).Razorpay(options);
-        paymentObject.on('payment.failed', function (response: any) {
+        paymentObject.on('payment.failed', function () {
           toast.error("Payment cancelled or failed. Please try again.");
           setLoading(false);
         });
         paymentObject.open();
 
       } else {
-        // Cash on Install route -> Instantly trigger WhatsApp
-        triggerWhatsApp(newOrderId, secureTotal, "Cash/UPI on Installation");
+        triggerSuccessAndWhatsApp(newOrderId, secureTotal, "Cash/UPI on Installation");
       }
       
     } catch (err: any) {
@@ -295,12 +292,20 @@ export const WhatsAppCheckoutModal = ({ product, open, onClose, onSuccess }: Pro
               </div>
               
               <h2 className="text-2xl font-black tracking-tight mb-2">Order Confirmed!</h2>
-              <p className="text-muted-foreground text-sm mb-6">Your request has been successfully placed via WhatsApp.</p>
+              <p className="text-muted-foreground text-sm mb-6">Your payment was successful and your request has been placed.</p>
               
-              <div className="w-full bg-muted/20 border border-border/50 rounded-2xl p-4 mb-8">
+              <div className="w-full bg-muted/20 border border-border/50 rounded-2xl p-4 mb-6">
                 <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Order Tracking ID</div>
                 <div className="text-xl font-mono font-black text-primary">#{generatedOrderId}</div>
               </div>
+
+              {/* 🚀 BACKUP WHATSAPP BUTTON IF BROWSER BLOCKED THE POPUP */}
+              <Button 
+                onClick={() => window.open(whatsappLink, "_blank")}
+                className="w-full h-12 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold mb-8 shadow-lg shadow-[#25D366]/20"
+              >
+                <MessageCircle className="w-5 h-5 mr-2" /> Send WhatsApp Receipt
+              </Button>
 
               <div className="w-full space-y-3 mb-8 text-left">
                 <h3 className="text-xs font-black uppercase tracking-widest text-foreground/80 border-b border-border/50 pb-2">What happens next?</h3>
