@@ -439,8 +439,6 @@ export default function Checkout() {
                 </Accordion>
               </div>
 
-              </div>
-
               <div className="hidden md:block relative">
                 <div className="sticky top-24 bg-card border border-border/40 rounded-2xl p-6 shadow-sm">
                   <h3 className="font-black text-lg mb-4">Order Summary</h3>
