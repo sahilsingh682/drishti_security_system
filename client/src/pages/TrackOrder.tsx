@@ -142,9 +142,17 @@ export default function TrackOrder() {
                       Placed on: {new Date(order.created_at).toLocaleDateString()}
                     </p>
                   </div>
-                  <span className="bg-orange-500 text-white text-[10px] px-3 py-1.5 rounded-full font-black uppercase tracking-widest shadow-sm">
-                    {order.install_status.replace('_', ' ')}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-orange-500 text-white text-[10px] px-3 py-1.5 rounded-full font-black uppercase tracking-widest shadow-sm">
+                      {order.install_status.replace('_', ' ')}
+                    </span>
+                    <button
+                      onClick={() => { setOrder(null); setOrderId(""); setPhone(""); }}
+                      className="text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </div>
                 </div>
 
                 {/* Live Progress Bar */}

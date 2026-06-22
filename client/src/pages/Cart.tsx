@@ -90,9 +90,9 @@ const Cart = () => {
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20, height: 0 }}
-                  className="flex gap-4 p-4 rounded-2xl border border-border/40 bg-card shadow-sm"
+                  className="flex gap-3 p-4 rounded-2xl border border-border/40 bg-card shadow-sm"
                 >
-                  <div className="w-24 h-24 rounded-xl bg-muted/20 overflow-hidden flex-shrink-0 border border-border/30">
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl bg-muted/20 overflow-hidden flex-shrink-0 border border-border/30">
                     {item.image_url ? (
                       <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
                     ) : (
@@ -100,11 +100,23 @@ const Cart = () => {
                     )}
                   </div>
                   <div className="flex-1 min-w-0 py-1">
-                    <h3 className="font-bold text-base text-foreground truncate">{item.name}</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">{item.brand} · {item.category}</p>
-                    <p className="text-lg font-black text-primary mt-2">₹{(item.price * item.quantity).toLocaleString()}</p>
+                    <h3 className="font-bold text-sm text-foreground line-clamp-2 leading-tight">{item.name}</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{item.brand} · {item.category}</p>
+                    <p className="text-base font-black text-primary mt-1.5">₹{(item.price * item.quantity).toLocaleString()}</p>
+                    {/* Mobile quantity controls inline */}
+                    <div className="flex items-center gap-2 mt-2 sm:hidden">
+                      <div className="flex items-center gap-2 bg-muted/40 rounded-xl px-1.5 py-1 border border-border/50">
+                        <button onClick={() => updateQty(item.id, item.quantity - 1)} className="p-1 hover:text-primary transition-colors"><Minus className="w-3.5 h-3.5" /></button>
+                        <span className="text-sm font-bold w-4 text-center">{item.quantity}</span>
+                        <button onClick={() => updateQty(item.id, item.quantity + 1)} className="p-1 hover:text-primary transition-colors"><Plus className="w-3.5 h-3.5" /></button>
+                      </div>
+                      <motion.button whileTap={{ scale: 0.9 }} onClick={() => removeFromCart(item.id)} className="text-muted-foreground hover:text-destructive transition-colors p-1">
+                        <Trash2 className="w-4 h-4" />
+                      </motion.button>
+                    </div>
                   </div>
-                  <div className="flex flex-col items-end justify-between py-1">
+                  {/* Desktop quantity controls */}
+                  <div className="hidden sm:flex flex-col items-end justify-between py-1">
                     <motion.button whileTap={{ scale: 0.9 }} onClick={() => removeFromCart(item.id)} className="text-muted-foreground hover:text-destructive transition-colors p-1">
                       <Trash2 className="w-4 h-4" />
                     </motion.button>

@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { ArrowRight, ShieldCheck, Phone, Mail, MapPin, ExternalLink, Map } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { HeroBadge } from "@/components/hero/HeroBadge";
 import { ParallaxCamera } from "@/components/hero/ParallaxCamera";
@@ -16,6 +16,7 @@ import { useSettings } from "@/contexts/SettingsContext";
 
 const Index = () => {
   const { settings } = useSettings();
+  const navigate = useNavigate();
   
   // Dynamic values fallback
   const displayPhone = settings?.phone || "+91 98120 19772";
@@ -38,17 +39,27 @@ const Index = () => {
             <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.5 }} className="text-muted-foreground text-lg mt-6 max-w-xl mx-auto lg:mx-0">
               Professional CCTV, access control, and smart surveillance systems. Trusted by businesses and homeowners across India.
             </motion.p>
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.7 }} className="flex flex-col sm:flex-row gap-3 mt-8 justify-center lg:justify-start">
-              <Link to="/store" data-clickable>
-                <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground glow-amber font-semibold">
-                  Browse Products <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </Link>
-              <Link to="/contact" data-clickable>
-                <Button size="lg" variant="outline" className="border-border/60 hover:bg-muted/50">
-                  <ShieldCheck className="w-4 h-4 mr-2" /> Get Free Consultation
-                </Button>
-              </Link>
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              transition={{ duration: 0.5, delay: 0.7 }} 
+              className="flex flex-col sm:flex-row gap-3 mt-8 justify-center lg:justify-start"
+              style={{ pointerEvents: 'auto' }}
+            >
+              <button
+                type="button"
+                onClick={() => navigate('/store')}
+                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold h-11 px-8 bg-primary hover:bg-primary/90 text-primary-foreground glow-amber w-full sm:w-auto transition-colors touch-manipulation"
+              >
+                Browse Products <ArrowRight className="w-4 h-4 ml-2" />
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/contact')}
+                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium h-11 px-8 border border-border/60 hover:bg-muted/50 bg-background text-foreground w-full sm:w-auto transition-colors touch-manipulation"
+              >
+                <ShieldCheck className="w-4 h-4 mr-2" /> Get Free Consultation
+              </button>
             </motion.div>
           </div>
           <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8, delay: 0.4 }} className="flex-shrink-0">

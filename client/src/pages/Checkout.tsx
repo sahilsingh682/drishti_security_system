@@ -386,6 +386,11 @@ export default function Checkout() {
                   >
                     {loading ? "Processing..." : (paymentMethod === 'online' ? "Pay & Place Order" : "Confirm Order")}
                   </Button>
+                  {activeStep !== "step-3" && (
+                    <p className="text-center text-xs text-muted-foreground flex items-center justify-center gap-1 mt-1">
+                      Complete all steps above to place order
+                    </p>
+                  )}
 
                   <p className="text-center text-[10px] text-muted-foreground mt-4 flex items-center justify-center gap-1">
                     <Lock className="w-3 h-3" /> Payments processed securely by Razorpay

@@ -192,6 +192,12 @@
   }
 }
 
+/* Ensure all interactive elements work on mobile */
+a, button, [role="button"], input, select, textarea, label {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Custom cursor - desktop only, dark mode only */
 .dark {
   @media (pointer: fine) {

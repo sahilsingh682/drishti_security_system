@@ -164,13 +164,27 @@ export const Navbar = () => {
                   <Link to="/warranty" onClick={() => setOpen(false)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground"><Search className="w-4 h-4" />Warranty</Link>
                 </>
               ) : (
-                navItems.map((item) => (
-                  <Link key={item.path} to={item.path} onClick={() => setOpen(false)}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                      location.pathname === item.path ? "text-primary bg-primary/10" : "text-muted-foreground hover:bg-muted/50"
-                    }`}
-                  ><item.icon className="w-4 h-4" />{item.label}</Link>
-                ))
+                <>
+                  {navItems.map((item) => (
+                    <Link key={item.path} to={item.path} onClick={() => setOpen(false)}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                        location.pathname === item.path ? "text-primary bg-primary/10" : "text-muted-foreground hover:bg-muted/50"
+                      }`}
+                    ><item.icon className="w-4 h-4" />{item.label}</Link>
+                  ))}
+                  <div className="pt-2 border-t border-border/30 flex gap-2">
+                    <Link to="/wishlist" onClick={() => setOpen(false)} className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted/50 relative">
+                      <Heart className="w-4 h-4" />
+                      Wishlist
+                      {wishlistCount > 0 && <span className="ml-auto w-5 h-5 text-[10px] flex items-center justify-center rounded-full bg-destructive text-white font-bold">{wishlistCount}</span>}
+                    </Link>
+                    <Link to="/cart" onClick={() => setOpen(false)} className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted/50 relative">
+                      <ShoppingCart className="w-4 h-4" />
+                      Cart
+                      {cartCount > 0 && <span className="ml-auto w-5 h-5 text-[10px] flex items-center justify-center rounded-full bg-primary text-white font-bold">{cartCount}</span>}
+                    </Link>
+                  </div>
+                </>
               )}
           </motion.div>
         )}

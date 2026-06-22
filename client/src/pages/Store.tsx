@@ -1,15 +1,14 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, ShoppingBag, Eye, Star, MessageCircle, Heart, Zap, ArrowRight, ShoppingCart } from "lucide-react";
+import { Search, ShoppingBag, Eye, Star, Heart, Zap, ShoppingCart, ChevronDown, ChevronUp, Package, Truck, Shield, RotateCcw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
-import { WhatsAppCheckoutModal } from "@/components/WhatsAppCheckoutModal";
 
-const ProductCard = ({ product, index, onView, onCheckout }: { product: any; index: number; onView: (p: any) => void; onCheckout: (p: any) => void }) => {
+const ProductCard = ({ product, index, onView }: { product: any; index: number; onView: (p: any) => void }) => {
   const [isHovered, setIsHovered] = useState(false);
   const { addToCart, toggleWishlist, isWishlisted } = useCart();
   const liked = isWishlisted(product.id);
@@ -83,33 +82,16 @@ const ProductCard = ({ product, index, onView, onCheckout }: { product: any; ind
           </motion.span>
         )}
 
-        {/* Quick actions on hover */}
-        <AnimatePresence>
-          {isHovered && (
-            <motion.div
-              className="absolute bottom-3 left-3 right-3 z-10 flex gap-2"
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 20, opacity: 0 }}
-              transition={{ duration: 0.25 }}
-            >
-              <Button
-                size="sm"
-                className="flex-1 bg-primary/95 hover:bg-primary text-primary-foreground backdrop-blur-md text-xs h-9 rounded-xl"
-                onClick={() => onView(product)}
-              >
-                <Eye className="w-3.5 h-3.5 mr-1.5" /> Quick View
-              </Button>
-              <Button
-                size="sm"
-                className="flex-1 bg-card/90 hover:bg-card text-foreground backdrop-blur-md border border-border/40 text-xs h-9 rounded-xl"
-                onClick={() => onCheckout(product)}
-              >
-                <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> Order
-              </Button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Quick View — always visible on mobile, hover on desktop */}
+        <div className="absolute bottom-3 left-3 right-3 z-10 md:opacity-0 md:translate-y-2 md:group-hover:opacity-100 md:group-hover:translate-y-0 md:transition-all md:duration-250">
+          <Button
+            size="sm"
+            className="w-full bg-primary/95 hover:bg-primary text-primary-foreground backdrop-blur-md text-xs h-9 rounded-xl"
+            onClick={() => onView(product)}
+          >
+            <Eye className="w-3.5 h-3.5 mr-1.5" /> Quick View
+          </Button>
+        </div>
       </div>
 
       {/* Content */}
@@ -176,7 +158,7 @@ const Store = () => {
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState("All");
   const [selected, setSelected] = useState<any | null>(null);
-  const [checkoutProduct, setCheckoutProduct] = useState<any | null>(null);
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -252,7 +234,6 @@ const Store = () => {
                   product={product}
                   index={i}
                   onView={setSelected}
-                  onCheckout={(p) => setCheckoutProduct(p)}
                 />
               ))}
             </AnimatePresence>
@@ -267,9 +248,9 @@ const Store = () => {
         )}
       </div>
 
-      {/* Quick View Modal */}
-      <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
-        <DialogContent className="border-border/40 max-w-lg bg-card backdrop-blur-xl rounded-2xl overflow-hidden p-0">
+      {/* Quick View Modal — Flipkart/Amazon style expandable */}
+      <Dialog open={!!selected} onOpenChange={() => { setSelected(null); setExpandedSection(null); }}>
+        <DialogContent className="border-border/40 max-w-lg bg-card backdrop-blur-xl rounded-2xl overflow-hidden p-0 max-h-[90vh] overflow-y-auto">
           {selected && (
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}>
               <div className="relative aspect-video bg-muted/20 overflow-hidden">
@@ -281,39 +262,153 @@ const Store = () => {
                   </div>
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent" />
+                {selected.stock > 0 ? (
+                  <span className="absolute bottom-3 left-3 flex items-center gap-1 text-[10px] font-bold bg-emerald-500 text-white px-2.5 py-1 rounded-full">
+                    <Zap className="w-3 h-3" /> In Stock
+                  </span>
+                ) : (
+                  <span className="absolute bottom-3 left-3 text-[10px] font-bold bg-destructive text-white px-2.5 py-1 rounded-full">Out of Stock</span>
+                )}
               </div>
+
               <div className="p-6 space-y-4 -mt-8 relative z-10">
                 <DialogHeader>
-                  <DialogTitle className="text-xl">{selected.name}</DialogTitle>
+                  <DialogTitle className="text-xl leading-tight">{selected.name}</DialogTitle>
                 </DialogHeader>
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl font-bold text-primary">₹{Number(selected.price).toLocaleString()}</span>
-                  <span className="text-sm text-muted-foreground font-mono">{selected.brand} · {selected.category}</span>
-                </div>
-                {Array.isArray(selected.features) && selected.features.length > 0 && (
+
+                <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="text-sm font-semibold mb-2 text-foreground">Features</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {(selected.features as string[]).map((f: string) => (
-                        <span key={f} className="px-3 py-1.5 text-xs rounded-xl bg-primary/10 text-primary border border-primary/20 font-medium">{f}</span>
-                      ))}
-                    </div>
+                    <span className="text-3xl font-bold text-primary">₹{Number(selected.price).toLocaleString()}</span>
+                    <span className="text-sm text-muted-foreground font-mono ml-3">{selected.brand}</span>
+                  </div>
+                  {selected.category && (
+                    <span className="px-2.5 py-1 text-[10px] font-mono tracking-wider uppercase rounded-full bg-primary/90 text-primary-foreground">
+                      {selected.category}
+                    </span>
+                  )}
+                </div>
+
+                {/* Rating row */}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 bg-emerald-600 text-white text-xs font-bold px-2 py-0.5 rounded">
+                    <Star className="w-3 h-3 fill-current" /> 4.5
+                  </div>
+                  <span className="text-xs text-muted-foreground">Professional Grade Security Equipment</span>
+                </div>
+
+                {/* Delivery / policy pills */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-muted/40 border border-border/30">
+                    <Truck className="w-4 h-4 text-primary shrink-0" />
+                    <span className="text-[11px] font-medium">Free Installation</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-muted/40 border border-border/30">
+                    <Shield className="w-4 h-4 text-primary shrink-0" />
+                    <span className="text-[11px] font-medium">1 Year Warranty</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-muted/40 border border-border/30">
+                    <RotateCcw className="w-4 h-4 text-primary shrink-0" />
+                    <span className="text-[11px] font-medium">7-Day Support</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-muted/40 border border-border/30">
+                    <Package className="w-4 h-4 text-primary shrink-0" />
+                    <span className="text-[11px] font-medium">Expert Setup</span>
+                  </div>
+                </div>
+
+                {/* Expandable: Features */}
+                {Array.isArray(selected.features) && selected.features.length > 0 && (
+                  <div className="border border-border/40 rounded-xl overflow-hidden">
+                    <button
+                      className="w-full flex items-center justify-between px-4 py-3 bg-muted/20 hover:bg-muted/40 transition-colors text-sm font-semibold"
+                      onClick={() => setExpandedSection(expandedSection === 'features' ? null : 'features')}
+                    >
+                      Key Features
+                      {expandedSection === 'features' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
+                    <AnimatePresence>
+                      {expandedSection === 'features' && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="px-4 py-3 flex flex-wrap gap-2">
+                            {(selected.features as string[]).map((f: string) => (
+                              <span key={f} className="px-3 py-1.5 text-xs rounded-xl bg-primary/10 text-primary border border-primary/20 font-medium">{f}</span>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 )}
-                <div className="flex gap-2">
+
+                {/* Expandable: Description */}
+                {selected.description && (
+                  <div className="border border-border/40 rounded-xl overflow-hidden">
+                    <button
+                      className="w-full flex items-center justify-between px-4 py-3 bg-muted/20 hover:bg-muted/40 transition-colors text-sm font-semibold"
+                      onClick={() => setExpandedSection(expandedSection === 'desc' ? null : 'desc')}
+                    >
+                      Product Description
+                      {expandedSection === 'desc' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
+                    <AnimatePresence>
+                      {expandedSection === 'desc' && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="overflow-hidden"
+                        >
+                          <p className="px-4 py-3 text-sm text-muted-foreground leading-relaxed">{selected.description}</p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+
+                {/* Expandable: Specifications */}
+                <div className="border border-border/40 rounded-xl overflow-hidden">
+                  <button
+                    className="w-full flex items-center justify-between px-4 py-3 bg-muted/20 hover:bg-muted/40 transition-colors text-sm font-semibold"
+                    onClick={() => setExpandedSection(expandedSection === 'specs' ? null : 'specs')}
+                  >
+                    Specifications
+                    {expandedSection === 'specs' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
+                  <AnimatePresence>
+                    {expandedSection === 'specs' && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="px-4 py-3 space-y-2 text-sm">
+                          {selected.brand && <div className="flex justify-between"><span className="text-muted-foreground">Brand</span><span className="font-medium">{selected.brand}</span></div>}
+                          {selected.category && <div className="flex justify-between"><span className="text-muted-foreground">Category</span><span className="font-medium">{selected.category}</span></div>}
+                          <div className="flex justify-between"><span className="text-muted-foreground">Availability</span><span className={`font-medium ${selected.stock > 0 ? 'text-emerald-500' : 'text-destructive'}`}>{selected.stock > 0 ? `In Stock (${selected.stock} units)` : 'Out of Stock'}</span></div>
+                          <div className="flex justify-between"><span className="text-muted-foreground">Warranty</span><span className="font-medium">1 Year</span></div>
+                          <div className="flex justify-between"><span className="text-muted-foreground">Installation</span><span className="font-medium">Professional (Included)</span></div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <div className="pt-2">
                   <Button
-                    className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-12 text-sm font-semibold"
-                    onClick={() => { addToCart(selected); setSelected(null); }}
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-12 text-sm font-semibold"
+                    onClick={() => { addToCart(selected); setSelected(null); setExpandedSection(null); }}
                   >
                     <ShoppingCart className="w-4 h-4 mr-2" /> Add to Cart
                   </Button>
-                  {/* <Button
-                    variant="outline"
-                    className="flex-1 border-border/40 rounded-xl h-12 text-sm font-semibold"
-                    onClick={() => { setSelected(null); setCheckoutProduct(selected); }}
-                  >
-                    <MessageCircle className="w-4 h-4 mr-2" /> WhatsApp
-                  </Button> */}
                 </div>
               </div>
             </motion.div>
@@ -321,7 +416,6 @@ const Store = () => {
         </DialogContent>
       </Dialog>
 
-      <WhatsAppCheckoutModal product={checkoutProduct} open={!!checkoutProduct} onClose={() => setCheckoutProduct(null)} />
     </div>
   );
 };

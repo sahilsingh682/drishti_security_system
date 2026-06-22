@@ -63,7 +63,7 @@ export const FeaturedProducts = () => {
               Featured Products
             </h2>
           </motion.div>
-          <Link to="/store" data-clickable>
+          <Link to="/store">
             <Button variant="ghost" className="hidden sm:flex gap-2 text-muted-foreground hover:text-primary">
               View All <ArrowRight className="w-4 h-4" />
             </Button>
@@ -79,7 +79,7 @@ export const FeaturedProducts = () => {
               viewport={{ once: true }}
               transition={{ delay: i * 0.1, type: "spring", stiffness: 100 }}
             >
-              <Link to="/store" data-clickable className="group block">
+              <div className="group block">
                 <div className="relative rounded-2xl overflow-hidden border border-border/30 bg-card hover:shadow-lg hover:shadow-primary/5 transition-all duration-300">
                   <div className="aspect-[4/3] bg-muted/20 overflow-hidden">
                     {product.image_url ? (
@@ -117,15 +117,21 @@ export const FeaturedProducts = () => {
                         <span className="text-xs font-medium">4.5</span>
                       </div>
                     </div>
+                    {/* Tap-friendly action buttons — always visible */}
+                    <Link to="/store" className="block mt-3">
+                      <Button size="sm" variant="outline" className="w-full text-xs h-8 rounded-lg border-primary/30 text-primary hover:bg-primary hover:text-primary-foreground">
+                        View Details
+                      </Button>
+                    </Link>
                   </div>
                 </div>
-              </Link>
+              </div>
             </motion.div>
           ))}
         </div>
 
         <div className="mt-8 text-center sm:hidden">
-          <Link to="/store" data-clickable>
+          <Link to="/store">
             <Button variant="outline" className="gap-2">
               View All Products <ArrowRight className="w-4 h-4" />
             </Button>

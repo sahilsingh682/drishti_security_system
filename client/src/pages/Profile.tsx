@@ -142,7 +142,7 @@ const Profile = () => {
                 <User className="w-12 h-12 text-muted-foreground/50" />
               )}
             </div>
-            <label className="absolute inset-0 z-20 rounded-full flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 backdrop-blur-sm transition-all cursor-pointer shadow-inner">
+            <label className="absolute inset-0 z-20 rounded-full flex items-center justify-center bg-black/50 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 backdrop-blur-sm transition-all cursor-pointer shadow-inner">
               <Camera className="w-6 h-6 text-white" />
               <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} disabled={uploading} />
             </label>

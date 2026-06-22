@@ -87,7 +87,7 @@ const Contact = () => {
               <Label className="text-xs text-muted-foreground uppercase tracking-wider">Message</Label>
               <Textarea required placeholder="How can we help?" rows={5} value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} className="mt-1.5 bg-muted/30 border-border/50 resize-none" />
             </div>
-            <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground" disabled={loading}>
+            <Button type="submit" className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground" disabled={loading}>
               {loading ? "Sending..." : <><Send className="w-4 h-4 mr-2" /> Send Message</>}
             </Button>
           </form>

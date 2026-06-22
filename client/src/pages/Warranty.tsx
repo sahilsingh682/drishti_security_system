@@ -113,6 +113,7 @@ const Warranty = () => {
               <AlertCircle className="w-10 h-10 text-destructive mx-auto" />
               <h3 className="text-xl font-black text-destructive uppercase">Unregistered Identity</h3>
               <p className="text-sm text-muted-foreground max-w-sm mx-auto">This serial number could not be located in our secure database. Please verify the input or contact support.</p>
+              <button onClick={() => { setResult(null); setSerialNumber(""); }} className="mt-2 text-xs font-black uppercase tracking-widest text-primary underline underline-offset-4">Try Again</button>
             </motion.div>
           )}
 
