@@ -23,91 +23,10 @@ interface Props {
   required?: boolean;
 }
 
-// 🚀 Load Mappls (MapmyIndia) Scripts dynamically
-const loadMapplsScripts = (apiKey: string) => {
-  return new Promise((resolve) => {
-    if (window.mappls) {
-      resolve(true);
-      return;
-    }
-    
-    // Load Core Map SDK
-    const coreScript = document.createElement("script");
-    coreScript.src = `https://apis.mappls.com/advancedmaps/api/${apiKey}/map_sdk?layer=vector&v=3.0`;
-    
-    coreScript.onload = () => {
-      // Load Plugins (for Autocomplete & Search)
-      const pluginScript = document.createElement("script");
-      pluginScript.src = `https://apis.mappls.com/advancedmaps/api/${apiKey}/map_sdk_plugins?v=3.0`;
-      pluginScript.onload = () => resolve(true);
-      pluginScript.onerror = () => resolve(false);
-      document.head.appendChild(pluginScript);
-    };
-    
-    coreScript.onerror = () => resolve(false);
-    document.head.appendChild(coreScript);
-  });
-};
-
 export const AddressInput = ({ value, onChange, required = false }: Props) => {
   const [loadingLocation, setLoadingLocation] = useState(false);
-  const [mapsLoaded, setMapsLoaded] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Mappls API Key .env se aayegi
-  const API_KEY = import.meta.env.VITE_MAPPLS_API_KEY || "";
-
-  useEffect(() => {
-    if (API_KEY) {
-      loadMapplsScripts(API_KEY).then((loaded) => {
-        if (loaded) {
-          setMapsLoaded(true);
-          initMapplsAutocomplete();
-        }
-      });
-    } else {
-      console.warn("Mappls API Key is missing in .env");
-    }
-  }, [API_KEY]);
-
-  const initMapplsAutocomplete = () => {
-    if (!searchInputRef.current || !window.mappls) return;
-
-    // 🚀 Mappls Smart Search Plugin
-    new window.mappls.search({
-      keyword: "",
-      location: [28.61, 77.23], // Default India center
-      pod: "City,State,SubLocality,Locality,Village",
-    }, (data: any) => {
-       if (data && data.length > 0) {
-           const place = data[0]; // Best match
-           parseAndSetAddressMappls(place);
-       }
-    });
-  };
-
-  // 🚀 Mappls Data Mapper
-  const parseAndSetAddressMappls = (placeData: any) => {
-    const newAddress = { ...value, lat: placeData.latitude, lng: placeData.longitude };
-
-    if (placeData.pincode) newAddress.pincode = placeData.pincode;
-    if (placeData.city) newAddress.city = placeData.city;
-    if (placeData.state) newAddress.state = placeData.state;
-    if (placeData.district) newAddress.city = placeData.district; // Fallback
-    
-    if (placeData.subLocality || placeData.locality) {
-      newAddress.area = placeData.subLocality || placeData.locality;
-    }
-    if (placeData.poi || placeData.placeName) {
-      newAddress.landmark = placeData.placeName;
-      newAddress.society = placeData.poi || placeData.subLocality;
-    }
-
-    onChange(newAddress);
-    toast.success("Address auto-filled securely!");
-  };
-
-  // 🚀 Upgraded Live Location Pickup (Using Mappls Native Reverse Geocoding)
+  // 🚀 Upgraded Live Location Pickup with Google Geocoding API fallback
   const pickLocation = () => {
     if (!navigator.geolocation) {
       toast.error("Geolocation not supported by your browser");
@@ -116,42 +35,44 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
     
     setLoadingLocation(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const { latitude, longitude } = pos.coords;
         
-        // Ensure Mappls SDK is loaded
-        if (window.mappls && window.mappls.reverseGeocode) {
-          window.mappls.reverseGeocode({
-            lat: latitude,
-            lng: longitude
-          }, (data: any) => {
-            if (data && data.length > 0) {
-              const place = data[0];
-              
-              onChange({
-                ...value,
-                lat: latitude,
-                lng: longitude,
-                // Mappls accurately maps Indian postal codes and local districts
-                pincode: place.pincode || "",
-                city: place.city || place.district || "",
-                state: place.state || "",
-                society: place.street || place.poi || place.locality || "",
-                area: place.subLocality || place.locality || "",
-                landmark: place.poi || ""
-              });
-              
-              toast.success("Exact location and pincode pinned securely!");
-            } else {
-              toast.error("Could not fetch address details for this location.");
-              onChange({ ...value, lat: latitude, lng: longitude });
-            }
-            setLoadingLocation(false);
-          });
-        } else {
-          toast.error("Mappls SDK is still loading. Please try again.");
-          setLoadingLocation(false);
+        try {
+          // Use a free geocoding API (nominatim OpenStreetMap)
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`,
+            { headers: { 'User-Agent': 'DrishtiSecurityApp' } }
+          );
+          
+          if (response.ok) {
+            const data = await response.json();
+            const addr = data.address || {};
+            
+            onChange({
+              ...value,
+              lat: latitude,
+              lng: longitude,
+              pincode: addr.postcode || "",
+              city: addr.city || addr.town || addr.village || addr.state_district || "",
+              state: addr.state || "",
+              society: addr.road || addr.neighbourhood || "",
+              area: addr.suburb || addr.neighbourhood || "",
+              landmark: addr.amenity || addr.building || ""
+            });
+            
+            toast.success("Location picked successfully!");
+          } else {
+            // Fallback: Just save coordinates
+            onChange({ ...value, lat: latitude, lng: longitude });
+            toast.info("Location saved. Please fill in address details.");
+          }
+        } catch (error) {
+          onChange({ ...value, lat: latitude, lng: longitude });
+          toast.info("Location saved. Please fill in address details.");
         }
+        
+        setLoadingLocation(false);
       },
       (err) => {
         toast.error("Location access denied. Please type your address.");
@@ -163,25 +84,6 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
 
   return (
     <div className="space-y-4">
-      
-      {/* 🚀 Smart Search Bar (Mappls) */}
-      {mapsLoaded && (
-        <div className="bg-primary/5 p-4 rounded-xl border border-primary/20 mb-4">
-          <Label className="text-xs font-black uppercase tracking-widest text-primary mb-2 block">
-            Smart Search (MapmyIndia)
-          </Label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/50" />
-            <Input
-              ref={searchInputRef}
-              id="mappls-search"
-              placeholder="Search your building, society, or area..."
-              className="pl-10 h-12 bg-background border-primary/20 font-medium shadow-inner"
-            />
-          </div>
-        </div>
-      )}
-
       {/* Live location button */}
       <Button
         type="button"
@@ -197,17 +99,35 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
         )}
       </Button>
 
-      {/* Map preview */}
+      {/* Map preview - Using Google Maps Static */}
       {value.lat && value.lng && (
-        <div className="rounded-xl overflow-hidden border-2 border-primary/20 h-40 shadow-sm relative">
-          <iframe
-            title="Location"
-            width="100%"
-            height="100%"
-            style={{ border: 0 }}
-            loading="lazy"
-            src={`https://www.openstreetmap.org/export/embed.html?bbox=${value.lng - 0.005},${value.lat - 0.003},${value.lng + 0.005},${value.lat + 0.003}&layer=mapnik&marker=${value.lat},${value.lng}`}
-          />
+        <div className="rounded-xl overflow-hidden border-2 border-primary/20 shadow-sm relative">
+          <a 
+            href={`https://www.google.com/maps/search/?api=1&query=${value.lat},${value.lng}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block"
+          >
+            <img
+              src={`https://maps.googleapis.com/maps/api/staticmap?center=${value.lat},${value.lng}&zoom=15&size=600x200&markers=color:red%7C${value.lat},${value.lng}&key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8`}
+              alt="Location Map"
+              className="w-full h-40 object-cover"
+              onError={(e) => {
+                // Fallback to OpenStreetMap iframe if Google Maps fails
+                e.currentTarget.style.display = 'none';
+                const iframe = document.createElement('iframe');
+                iframe.width = '100%';
+                iframe.height = '160';
+                iframe.style.border = '0';
+                iframe.loading = 'lazy';
+                iframe.src = `https://www.openstreetmap.org/export/embed.html?bbox=${value.lng - 0.005},${value.lat - 0.003},${value.lng + 0.005},${value.lat + 0.003}&layer=mapnik&marker=${value.lat},${value.lng}`;
+                e.currentTarget.parentElement?.appendChild(iframe);
+              }}
+            />
+          </a>
+          <div className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold text-primary">
+            📍 Click to view in Google Maps
+          </div>
         </div>
       )}
 
