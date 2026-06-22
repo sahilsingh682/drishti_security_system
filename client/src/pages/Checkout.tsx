@@ -11,8 +11,7 @@ import { useCart } from "@/contexts/CartContext";
 import { AddressInput, type AddressData } from "@/components/AddressInput";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-
-// 🚀 NEW: Import the Soft Wall Modal
+import { supabase } from "@/integrations/supabase/client";
 import CheckoutAuthModal from "@/components/CheckoutAuthModal";
 
 const loadRazorpayScript = () => {
@@ -131,8 +130,8 @@ export default function Checkout() {
   };
 
   const handlePlaceOrder = async () => {
-    if (!firstName || !phone || !address.pincode) {
-      toast.error("Please fill in all required fields.");
+    if (!firstName || !phone || !address.pincode || !address.city || !address.state) {
+      toast.error("Please fill in all required fields (Name, Phone, Pincode, City, State).");
       return;
     }
 
@@ -141,6 +140,48 @@ export default function Checkout() {
     try {
       const orderItems = product.rawItems || [{ id: product.id, name: product.name, qty: 1 }];
       const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+      
+      let apiAvailable = false;
+      try {
+        const healthCheck = await fetch(`${API_URL}/health`, { method: 'GET' });
+        apiAvailable = healthCheck.ok;
+      } catch (e) {
+        console.warn('Backend API not available');
+      }
+
+      let newOrderId = '';
+      let secureTotal = product.price;
+
+      if (!apiAvailable) {
+        const { data: orderData, error } = await supabase
+          .from('orders')
+          .insert({
+            user_id: user?.id || null,
+            customer_name: `${firstName} ${lastName}`.trim(),
+            customer_phone: phone,
+            items: orderItems,
+            total_amount: product.price,
+            delivery_address: address,
+            payment_status: paymentMethod === 'online' ? 'pending' : 'cash_on_install',
+            payment_method: paymentMethod,
+            install_status: 'pending'
+          })
+          .select()
+          .single();
+
+        if (error) throw new Error(error.message);
+        newOrderId = orderData.id;
+        secureTotal = orderData.total_amount;
+
+        if (paymentMethod === 'online') {
+          toast.info('Online payment is unavailable. Please choose Pay on Installation.');
+          setLoading(false);
+          return;
+        }
+
+        triggerSuccessAndWhatsApp(newOrderId, secureTotal, "Cash/UPI on Installation");
+        return;
+      }
       
       const response = await fetch(`${API_URL}/api/orders/checkout`, {
         method: 'POST',
@@ -162,52 +203,71 @@ export default function Checkout() {
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || 'Checkout failed');
 
-      const newOrderId = data.orderId;
-      const secureTotal = data.totalAmount;
+      newOrderId = data.orderId;
+      secureTotal = data.totalAmount;
 
       if (paymentMethod === 'online' && data.razorpayOrderId) {
+        const RAZORPAY_KEY = import.meta.env.VITE_RAZORPAY_KEY_ID;
+        
+        if (!RAZORPAY_KEY) {
+          toast.error('Payment gateway not configured. Please choose Pay on Installation.');
+          setLoading(false);
+          return;
+        }
+
         const res = await loadRazorpayScript();
         if (!res) {
-          toast.error("Razorpay SDK failed to load. Are you online?");
+          toast.error("Razorpay SDK failed to load. Please choose Pay on Installation.");
           setLoading(false);
           return;
         }
 
         const options = {
-          key: import.meta.env.VITE_RAZORPAY_KEY_ID, 
+          key: RAZORPAY_KEY, 
           amount: Math.round(secureTotal * 100), 
           currency: "INR",
           name: "Drishti Security System",
           description: "Secure Checkout",
           order_id: data.razorpayOrderId,
           handler: async function (rzpResponse: any) {
-            const verifyRes = await fetch(`${API_URL}/api/orders/verify-payment`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                razorpay_order_id: rzpResponse.razorpay_order_id,
-                razorpay_payment_id: rzpResponse.razorpay_payment_id,
-                razorpay_signature: rzpResponse.razorpay_signature,
-                orderId: newOrderId
-              })
-            });
-            
-            const verifyData = await verifyRes.json();
-            
-            if (verifyData.success) {
-              triggerSuccessAndWhatsApp(newOrderId, secureTotal, "Online Payment (Paid Successfully) ✅");
-            } else {
-              toast.error("Payment verification failed! Please contact support.");
+            try {
+              const verifyRes = await fetch(`${API_URL}/api/orders/verify-payment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  razorpay_order_id: rzpResponse.razorpay_order_id,
+                  razorpay_payment_id: rzpResponse.razorpay_payment_id,
+                  razorpay_signature: rzpResponse.razorpay_signature,
+                  orderId: newOrderId
+                })
+              });
+              
+              const verifyData = await verifyRes.json();
+              
+              if (verifyData.success) {
+                triggerSuccessAndWhatsApp(newOrderId, secureTotal, "Online Payment (Paid Successfully) ✅");
+              } else {
+                toast.error("Payment verification failed!");
+                setLoading(false);
+              }
+            } catch (error) {
+              toast.error("Payment verification failed!");
               setLoading(false);
             }
           },
           prefill: { name: `${firstName} ${lastName}`.trim(), contact: phone },
-          theme: { color: "#0f172a" },
+          theme: { color: "#f97316" },
+          modal: {
+            ondismiss: function() {
+              toast.info("Payment cancelled.");
+              setLoading(false);
+            }
+          }
         };
 
         const paymentObject = new (window as any).Razorpay(options);
         paymentObject.on('payment.failed', function () {
-          toast.error("Payment cancelled or failed.");
+          toast.error("Payment failed.");
           setLoading(false);
         });
         paymentObject.open();
@@ -218,7 +278,7 @@ export default function Checkout() {
       
     } catch (err: any) {
       console.error("Checkout error:", err);
-      toast.error("Something went wrong during checkout.");
+      toast.error(err.message || "Something went wrong.");
       setLoading(false);
     } 
   };
@@ -252,9 +312,36 @@ export default function Checkout() {
 
         <AnimatePresence mode="wait">
           {!isSuccess ? (
-            <motion.div key="checkout-flow" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} className="grid md:grid-cols-[1fr_350px] gap-8">
+            <motion.div key="checkout-flow" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} className="flex flex-col gap-8 pb-24 md:pb-0">
               
-              {/* LEFT COLUMN: The Accordion Form */}
+              <div className="md:hidden bg-card border border-border/40 rounded-2xl p-6 shadow-sm">
+                <h3 className="font-black text-lg mb-4">Order Summary</h3>
+                
+                <div className="space-y-3 mb-6">
+                  {product.rawItems?.map((item: any) => (
+                    <div key={item.id} className="flex justify-between text-sm">
+                      <span className="text-muted-foreground truncate pr-4">{item.quantity}x {item.name}</span>
+                      <span className="font-medium">₹{(item.price * item.quantity).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t border-border/40 pt-4 space-y-2">
+                  {product.appliedCouponCode && (
+                    <div className="flex justify-between text-sm text-emerald-500 font-medium">
+                      <span>Discount ({product.appliedCouponCode})</span>
+                      <span>- ₹{product.discountAmount?.toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-xl font-black pt-2">
+                    <span>Total</span>
+                    <span className="text-primary">₹{Number(product.price).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-[1fr_380px] gap-8">
+              
               <div className="space-y-6">
                 <Accordion type="single" value={activeStep} onValueChange={setActiveStep} className="bg-card border border-border/40 rounded-2xl overflow-hidden shadow-sm">
                   
@@ -352,8 +439,9 @@ export default function Checkout() {
                 </Accordion>
               </div>
 
-              {/* RIGHT COLUMN: Order Summary Box */}
-              <div className="relative">
+              </div>
+
+              <div className="hidden md:block relative">
                 <div className="sticky top-24 bg-card border border-border/40 rounded-2xl p-6 shadow-sm">
                   <h3 className="font-black text-lg mb-4">Order Summary</h3>
                   
@@ -381,21 +469,37 @@ export default function Checkout() {
 
                   <Button 
                     onClick={handlePlaceOrder} 
-                    className="w-full h-14 text-lg font-black uppercase tracking-widest shadow-lg" 
+                    className="w-full h-14 text-base font-black uppercase tracking-widest shadow-lg" 
                     disabled={loading || activeStep !== "step-3"}
                   >
                     {loading ? "Processing..." : (paymentMethod === 'online' ? "Pay & Place Order" : "Confirm Order")}
                   </Button>
                   {activeStep !== "step-3" && (
-                    <p className="text-center text-xs text-muted-foreground flex items-center justify-center gap-1 mt-1">
-                      Complete all steps above to place order
+                    <p className="text-center text-xs text-muted-foreground flex items-center justify-center gap-1 mt-2">
+                      Complete all steps above
                     </p>
                   )}
 
                   <p className="text-center text-[10px] text-muted-foreground mt-4 flex items-center justify-center gap-1">
-                    <Lock className="w-3 h-3" /> Payments processed securely by Razorpay
+                    <Lock className="w-3 h-3" /> Payments processed securely
                   </p>
                 </div>
+              </div>
+              </div>
+
+              <div className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border/40 p-4 shadow-2xl z-40">
+                <Button 
+                  onClick={handlePlaceOrder} 
+                  className="w-full h-14 text-base font-black uppercase tracking-widest shadow-lg" 
+                  disabled={loading || activeStep !== "step-3"}
+                >
+                  {loading ? "Processing..." : (paymentMethod === 'online' ? "Pay ₹" + Number(product.price).toLocaleString() : "Confirm ₹" + Number(product.price).toLocaleString())}
+                </Button>
+                {activeStep !== "step-3" && (
+                  <p className="text-center text-xs text-muted-foreground mt-2">
+                    Complete all steps above
+                  </p>
+                )}
               </div>
             </motion.div>
           ) : (
