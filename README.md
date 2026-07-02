@@ -92,6 +92,7 @@ The application will be available at `http://localhost:5173`.
 **Sahil Singh**
 
 * GitHub: [@sahilsingh682](https://www.google.com/search?q=https://github.com/sahilsingh682)
+* Linkedin: [@sahilsingh0521](https://www.linkedin.com/in/sahilsingh0521/)
 
 ---
 
