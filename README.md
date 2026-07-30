@@ -205,7 +205,7 @@ Distributed under the MIT License. See [`LICENSE`](./LICENSE) for more informati
 
 Project Link: [https://github.com/sahilsingh682/drishti_security_system](https://github.com/sahilsingh682/drishti_security_system)
 
-Linkedin: [www.linkedin.com/in/sahilsingh0521]
+Linkedin: [www.linkedin.com/in/sahilsingh0521](www.linkedin.com/in/sahilsingh0521)
 <div align="center">
   <sub>Built with ❤️ for smarter, safer spaces.</sub>
 </div>
