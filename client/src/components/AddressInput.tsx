@@ -170,9 +170,8 @@
 //   );
 // };
 
-
 import { useState, useEffect, useRef } from "react";
-import { MapPin, Navigation, Loader2, Search, CheckCircle2, X } from "lucide-react";
+import { MapPin, Navigation, Loader2, Search, CheckCircle2, X, Layers } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -180,7 +179,6 @@ import { toast } from "sonner";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// Fix default Leaflet marker icon paths in Vite builds
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
@@ -211,11 +209,16 @@ interface Props {
 }
 
 interface SearchSuggestion {
-  place_id: number;
-  display_name: string;
-  lat: string;
-  lon: string;
-  address?: Record<string, string>;
+  id: string;
+  title: string;
+  subtitle: string;
+  lat: number;
+  lng: number;
+  postcode?: string;
+  city?: string;
+  state?: string;
+  street?: string;
+  district?: string;
 }
 
 export const AddressInput = ({ value, onChange, required = false }: Props) => {
@@ -225,10 +228,12 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [mapType, setMapType] = useState<"roadmap" | "hybrid">("roadmap");
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markerInstanceRef = useRef<L.Marker | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const latestValueRef = useRef<AddressData>(value);
 
   useEffect(() => {
@@ -263,6 +268,8 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
             "",
           state: addr.state || current.state || "",
           society:
+            addr.university ||
+            addr.college ||
             addr.residential ||
             addr.road ||
             addr.neighbourhood ||
@@ -276,7 +283,14 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
             addr.village ||
             current.area ||
             "",
-          landmark: addr.amenity || addr.building || current.landmark || "",
+          landmark:
+            addr.university ||
+            addr.college ||
+            addr.school ||
+            addr.amenity ||
+            addr.building ||
+            current.landmark ||
+            "",
         });
 
         if (showToast) toast.success("Pin location updated!");
@@ -288,11 +302,16 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
     }
   };
 
-  // Initialize & sync interactive Leaflet map whenever lat/lng is set
+  // Initialize & sync interactive Leaflet map with rich Indian landmarks & Satellite toggle
   useEffect(() => {
     if (value.lat === undefined || value.lng === undefined || !mapContainerRef.current) {
       return;
     }
+
+    const tileUrl =
+      mapType === "hybrid"
+        ? "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}" // Satellite + Labels
+        : "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"; // Detailed Street Map with Landmarks, Universities & Villages
 
     if (!mapInstanceRef.current) {
       const map = L.map(mapContainerRef.current, {
@@ -301,20 +320,18 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
         zoomControl: true,
       });
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap",
-        maxZoom: 19,
+      const layer = L.tileLayer(tileUrl, {
+        attribution: "© Map Data",
+        maxZoom: 20,
       }).addTo(map);
 
       const marker = L.marker([value.lat, value.lng], { draggable: true }).addTo(map);
 
-      // Drag pin to adjust exact house/building
       marker.on("dragend", () => {
         const pos = marker.getLatLng();
         reverseGeocodeAndFill(pos.lat, pos.lng, true);
       });
 
-      // Click anywhere on map to move pin there
       map.on("click", (e: L.LeafletMouseEvent) => {
         marker.setLatLng(e.latlng);
         reverseGeocodeAndFill(e.latlng.lat, e.latlng.lng, true);
@@ -322,11 +339,15 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
 
       mapInstanceRef.current = map;
       markerInstanceRef.current = marker;
+      tileLayerRef.current = layer;
     } else {
       mapInstanceRef.current.setView([value.lat, value.lng], 16);
       markerInstanceRef.current?.setLatLng([value.lat, value.lng]);
+      if (tileLayerRef.current) {
+        tileLayerRef.current.setUrl(tileUrl);
+      }
     }
-  }, [value.lat, value.lng]);
+  }, [value.lat, value.lng, mapType]);
 
   // Cleanup map on unmount
   useEffect(() => {
@@ -338,7 +359,7 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
     };
   }, []);
 
-  // Live address autocomplete search (debounced)
+  // India-specific fuzzy autocomplete using Photon API (handles universities, villages, landmarks & typos)
   useEffect(() => {
     const trimmed = searchQuery.trim();
     if (trimmed.length < 3) {
@@ -350,63 +371,84 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
     const timer = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-            trimmed
-          )}&countrycodes=in&addressdetails=1&limit=5`,
-          { headers: { "Accept-Language": "en" } }
-        );
+        // Bias results toward current pin (or Panipat/Haryana NCR center if unset)
+        const biasLat = latestValueRef.current.lat ?? 29.3909;
+        const biasLng = latestValueRef.current.lng ?? 76.9635;
+
+        // bbox=68.1,6.5,97.4,35.6 restricts results strictly to India
+        const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(
+          trimmed
+        )}&lat=${biasLat}&lon=${biasLng}&bbox=68.1,6.5,97.4,35.6&limit=6&lang=en`;
+
+        const res = await fetch(url);
         if (res.ok) {
-          const results: SearchSuggestion[] = await res.json();
-          setSuggestions(results);
-          setShowDropdown(true);
+          const data = await res.json();
+          const features = data.features || [];
+
+          const mapped: SearchSuggestion[] = features.map((f: any, idx: number) => {
+            const p = f.properties || {};
+            const [lng, lat] = f.geometry?.coordinates || [0, 0];
+
+            const title =
+              p.name ||
+              p.street ||
+              p.locality ||
+              p.district ||
+              p.city ||
+              trimmed;
+
+            const subtitleParts = [
+              p.street && p.street !== title ? p.street : null,
+              p.locality || p.district,
+              p.city,
+              p.state,
+              p.postcode,
+            ].filter(Boolean);
+
+            return {
+              id: `${p.osm_id || idx}-${lat}-${lng}`,
+              title,
+              subtitle: subtitleParts.join(", ") || "India",
+              lat,
+              lng,
+              postcode: p.postcode || "",
+              city: p.city || p.county || p.district || "",
+              state: p.state || "",
+              street: p.street || p.locality || p.name || "",
+              district: p.locality || p.district || "",
+            };
+          });
+
+          setSuggestions(mapped);
+          setShowDropdown(mapped.length > 0);
         }
       } catch {
-        // Ignore transient search errors
+        // Ignore transient network errors
       } finally {
         setSearching(false);
       }
-    }, 350);
+    }, 300);
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
   // Select a search suggestion -> move map pin & fill address
   const handleSelectSuggestion = (item: SearchSuggestion) => {
-    const lat = parseFloat(item.lat);
-    const lng = parseFloat(item.lon);
-    const addr = item.address || {};
-
     onChange({
       ...value,
-      lat,
-      lng,
-      pincode: addr.postcode || value.pincode || "",
-      city:
-        addr.city ||
-        addr.town ||
-        addr.village ||
-        addr.county ||
-        addr.state_district ||
-        value.city ||
-        "",
-      state: addr.state || value.state || "",
-      society:
-        addr.residential ||
-        addr.road ||
-        addr.neighbourhood ||
-        addr.quarter ||
-        addr.suburb ||
-        item.display_name.split(",")[0] ||
-        value.society ||
-        "",
-      area: addr.suburb || addr.neighbourhood || value.area || "",
-      landmark: addr.amenity || addr.building || value.landmark || "",
+      lat: item.lat,
+      lng: item.lng,
+      pincode: item.postcode || value.pincode || "",
+      city: item.city || value.city || "",
+      state: item.state || value.state || "",
+      society: item.street || item.title || value.society || "",
+      area: item.district || value.area || "",
+      landmark: item.title || value.landmark || "",
     });
 
-    setSearchQuery(item.display_name.split(",").slice(0, 2).join(", "));
+    setSearchQuery(`${item.title}${item.city ? `, ${item.city}` : ""}`);
     setShowDropdown(false);
-    toast.success("Location selected! Drag the pin on map for exact doorstep accuracy.");
+    toast.success("Location pinned! Drag the marker or switch to Satellite view to pinpoint your exact building.");
   };
 
   // Auto-fill City & State + center map when a 6-digit Indian Pincode is entered
@@ -469,9 +511,13 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
         const { latitude, longitude, accuracy } = pos.coords;
 
         if (accuracy > 5000) {
-          // On laptops without GPS, center map on Panipat/India or let user search/drag instead of filling wrong Delhi IP
-          toast.warning(
-            "Laptop GPS unavailable (IP estimate). Search your area above or enter Pincode to drop your pin."
+          onChange({
+            ...latestValueRef.current,
+            lat: latitude,
+            lng: longitude,
+          });
+          toast.info(
+            "Approximate IP location shown. Search your college/colony above or drag the pin to your exact spot."
           );
           setLoadingLocation(false);
           return;
@@ -482,7 +528,12 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
         setLoadingLocation(false);
       },
       () => {
-        toast.error("Location access blocked. Search your area above or enter Pincode.");
+        onChange({
+          ...latestValueRef.current,
+          lat: 29.3909,
+          lng: 76.9635,
+        });
+        toast.info("Location access blocked. Search your area above or drag the pin.");
         setLoadingLocation(false);
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
@@ -491,7 +542,7 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
 
   return (
     <div className="space-y-4">
-      {/* Flipkart-Style Search Bar + Use Current Location Row */}
+      {/* Flipkart-Style India Location Search Bar */}
       <div className="relative">
         <div className="relative">
           <Search className="w-4 h-4 text-muted-foreground absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -500,7 +551,7 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
             value={searchQuery}
             onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search area, street, colony, or landmark (e.g. Naultha, Panipat)..."
+            placeholder="Search village, university, colony, or landmark in India..."
             className="pl-10 pr-9 h-11 bg-muted/20 border-primary/20 focus-visible:ring-primary"
           />
           {searching ? (
@@ -520,20 +571,25 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
           ) : null}
         </div>
 
-        {/* Autocomplete Results Dropdown */}
+        {/* Rich 2-Line Autocomplete Dropdown */}
         {showDropdown && suggestions.length > 0 && (
-          <div className="absolute z-50 w-full mt-1.5 bg-background border border-border rounded-xl shadow-lg overflow-hidden">
+          <div className="absolute z-50 w-full mt-1.5 bg-background border border-border rounded-xl shadow-xl overflow-hidden">
             {suggestions.map((item) => (
               <button
-                key={item.place_id}
+                key={item.id}
                 type="button"
                 onClick={() => handleSelectSuggestion(item)}
-                className="w-full text-left px-3.5 py-2.5 text-xs hover:bg-muted/60 flex items-start gap-2.5 border-b border-border/50 last:border-none transition-colors"
+                className="w-full text-left px-3.5 py-2.5 hover:bg-muted/60 flex items-start gap-2.5 border-b border-border/50 last:border-none transition-colors"
               >
-                <MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                <span className="line-clamp-2 text-foreground font-medium">
-                  {item.display_name}
-                </span>
+                <MapPin className="w-4 h-4 text-primary shrink-0 mt-1" />
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-foreground truncate">
+                    {item.title}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground truncate">
+                    {item.subtitle}
+                  </div>
+                </div>
               </button>
             ))}
           </div>
@@ -559,14 +615,25 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
         )}
       </Button>
 
-      {/* Interactive Draggable / Clickable Map Pin Picker */}
+      {/* Interactive Map with Street / Satellite View Switcher */}
       {value.lat !== undefined && value.lng !== undefined && (
-        <div className="rounded-xl overflow-hidden border-2 border-primary/20 shadow-sm">
-          <div ref={mapContainerRef} className="w-full h-48 z-0" />
+        <div className="rounded-xl overflow-hidden border-2 border-primary/20 shadow-sm relative">
+          <div ref={mapContainerRef} className="w-full h-56 z-0" />
+
+          {/* Map / Satellite Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setMapType((prev) => (prev === "roadmap" ? "hybrid" : "roadmap"))}
+            className="absolute top-2.5 right-2.5 z-[400] bg-background/95 backdrop-blur-sm border border-border shadow-md px-2.5 py-1.5 rounded-lg text-xs font-bold text-foreground hover:bg-muted flex items-center gap-1.5"
+          >
+            <Layers className="w-3.5 h-3.5 text-primary" />
+            {mapType === "roadmap" ? "Satellite" : "Map"}
+          </button>
+
           <div className="flex items-center justify-between px-3 py-2 bg-muted/40 text-xs">
             <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              Drag the pin or tap map for exact installation spot
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              Drag pin or tap map for exact spot
             </span>
             <span className="text-muted-foreground font-mono text-[11px]">
               {value.lat.toFixed(4)}, {value.lng.toFixed(4)}
@@ -612,21 +679,21 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
 
       <div>
         <Label className="text-xs text-muted-foreground uppercase tracking-wider font-bold">
-          Society / Street / Colony
+          Society / Street / Village
         </Label>
         <Input
           required={required}
           value={value.society}
           onChange={(e) => onChange({ ...value, society: e.target.value })}
           className="mt-1.5 bg-muted/20"
-          placeholder="e.g. Model Town / Naultha"
+          placeholder="e.g. Naultha / Model Town"
         />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
           <Label className="text-xs text-muted-foreground uppercase tracking-wider font-bold">
-            City
+            City / District
           </Label>
           <Input
             required={required}
