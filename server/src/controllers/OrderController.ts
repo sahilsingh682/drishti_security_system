@@ -342,7 +342,6 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
 
     const orderId = 'ORD-' + Math.floor(100000 + Math.random() * 900000);
 
-    // 1. Generate Razorpay Order if paymentMethod is 'online'
     let razorpayOrderId = null;
     const amountInPaise = Math.round(finalAmount * 100);
 
@@ -361,7 +360,6 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
       razorpayOrderId = rzpOrder.id;
     }
 
-    // 2. Insert the order into Supabase immediately using your exact table columns
     const customerPhone = customerDetails.phone || customerDetails.customer_phone || null;
     const { error: insertError } = await supabaseAdmin.from('orders').insert([
       {
@@ -381,6 +379,7 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
         applied_coupon_code: customerDetails.couponCode || customerDetails.applied_coupon_code || null,
         discount_amount: Number(customerDetails.discountAmount || customerDetails.discount_amount || 0),
         installation_charge: Number(customerDetails.installationCharge || customerDetails.installation_charge || 0),
+        razorpay_order_id: razorpayOrderId, // <--- ADDED HERE
       },
     ]);
 
@@ -390,7 +389,6 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    // 3. Send back the Order ID & Razorpay Order ID to the frontend
     res.status(200).json({
       success: true,
       orderId,
@@ -403,7 +401,6 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
   }
 };
 
-// 4. Verify payment after the user pays
 export const verifyPayment = async (req: Request, res: Response): Promise<void> => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderId } = req.body;
@@ -415,10 +412,13 @@ export const verifyPayment = async (req: Request, res: Response): Promise<void> 
       .digest('hex');
 
     if (razorpay_signature === expectedSign) {
-      // Update the existing order row created in createOrder to 'paid'
       const { data: updatedOrder, error: updateError } = await supabaseAdmin
         .from('orders')
-        .update({ payment_status: 'paid' })
+        .update({
+          payment_status: 'paid',
+          razorpay_order_id,   // <--- ADDED HERE
+          razorpay_payment_id, // <--- ADDED HERE
+        })
         .eq('id', orderId)
         .select()
         .single();
@@ -439,7 +439,6 @@ export const verifyPayment = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-// 5. Admin updates order status from the Dashboard
 export const updateOrderStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const { orderId } = req.params as { orderId: string };
@@ -484,4 +483,3 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
     res.status(500).json({ error: 'Internal Server Error' });
   }
 };
-
