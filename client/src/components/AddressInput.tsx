@@ -199,7 +199,36 @@ interface Props {
 
 export const AddressInput = ({ value, onChange, required = false }: Props) => {
   const [loadingLocation, setLoadingLocation] = useState(false);
+  const [fetchingPincode, setFetchingPincode] = useState(false);
   const [accuracyMeters, setAccuracyMeters] = useState<number | null>(null);
+
+  // Auto-fill City & State when a 6-digit Indian Pincode is entered
+  const handlePincodeChange = async (rawPin: string) => {
+    const cleanPin = rawPin.replace(/\D/g, "").slice(0, 6);
+    onChange({ ...value, pincode: cleanPin });
+
+    if (cleanPin.length === 6) {
+      setFetchingPincode(true);
+      try {
+        const res = await fetch(`https://api.postalpincode.in/pincode/${cleanPin}`);
+        const data = await res.json();
+        if (data?.[0]?.Status === "Success" && data[0].PostOffice?.length > 0) {
+          const po = data[0].PostOffice[0];
+          onChange({
+            ...value,
+            pincode: cleanPin,
+            city: po.District || value.city,
+            state: po.State || value.state,
+            area: po.Name || value.area,
+          });
+        }
+      } catch {
+        // Ignore network errors and let user type manually
+      } finally {
+        setFetchingPincode(false);
+      }
+    }
+  };
 
   const pickLocation = () => {
     if (!navigator.geolocation) {
@@ -212,6 +241,15 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
       async (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
         setAccuracyMeters(Math.round(accuracy));
+
+        // If accuracy > 5km (laptop ISP IP fallback), don't fill wrong city data
+        if (accuracy > 5000) {
+          toast.warning(
+            `Device GPS unavailable (estimated via IP ±${Math.round(accuracy / 1000)}km). Enter your 6-digit Pincode below to auto-fill your city.`
+          );
+          setLoadingLocation(false);
+          return;
+        }
 
         try {
           const response = await fetch(
@@ -256,7 +294,7 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
 
             if (accuracy > 150) {
               toast.warning(
-                `Approximate location detected (~${Math.round(accuracy)}m accuracy). Please verify your street & house details.`
+                `Approximate location detected (~${Math.round(accuracy)}m). Please verify street & house details.`
               );
             } else {
               toast.success("Exact GPS location picked!");
@@ -274,18 +312,18 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
       },
       (err) => {
         if (err.code === err.PERMISSION_DENIED) {
-          toast.error("Location permission denied. Please enable location or type your address.");
+          toast.error("Location permission denied. Enter your Pincode below to auto-fill.");
         } else if (err.code === err.TIMEOUT) {
-          toast.error("GPS signal timed out. Move near a window or type your address manually.");
+          toast.error("GPS timed out. Enter your Pincode below to auto-fill.");
         } else {
-          toast.error("Unable to detect location. Please type your address.");
+          toast.error("Unable to detect GPS. Enter your Pincode below.");
         }
         setLoadingLocation(false);
       },
       {
         enableHighAccuracy: true,
         timeout: 15000,
-        maximumAge: 0, // Always fetch fresh coordinates, never stale cache
+        maximumAge: 0,
       }
     );
   };
@@ -311,7 +349,7 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
         )}
       </Button>
 
-      {/* Clean Map Preview without broken Google placeholder key */}
+      {/* Clean Map Preview */}
       {value.lat !== undefined && value.lng !== undefined && (
         <div className="rounded-xl overflow-hidden border-2 border-primary/20 shadow-sm relative">
           <iframe
@@ -362,12 +400,13 @@ export const AddressInput = ({ value, onChange, required = false }: Props) => {
               required={required}
               maxLength={6}
               value={value.pincode}
-              onChange={(e) =>
-                onChange({ ...value, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) })
-              }
-              className="pl-9 bg-muted/20"
+              onChange={(e) => handlePincodeChange(e.target.value)}
+              className="pl-9 pr-8 bg-muted/20"
               placeholder="6-digit pincode"
             />
+            {fetchingPincode && (
+              <Loader2 className="w-3.5 h-3.5 animate-spin absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            )}
           </div>
         </div>
       </div>
