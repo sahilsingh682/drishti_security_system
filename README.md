@@ -11,7 +11,7 @@
 
 An end-to-end full-stack e-commerce and operations management platform engineered specifically for modern CCTV and security solutions. Built with a relentless focus on high-performance architecture, frictionless UI/UX, secure payment gateways, and robust role-based access control (RBAC).
 
-[Live Demo](https://drishti-security-systems.vercel.app/) · [Report Bug](https://github.com/sahilsingh682/drishti_security_system/issues) · [Request Feature](https://github.com/sahilsingh682/drishti_security_system/issues)
+[Live Demo](https://drishti-security-systems.vercel.app/) · [Report Bug](https://github.com/sahilsingh682/drishti_security_systems/issues) · [Request Feature](https://github.com/sahilsingh682/drishti_security_systems/issues)
 
 </div>
 
@@ -89,7 +89,7 @@ An end-to-end full-stack e-commerce and operations management platform engineere
 
 ```bash
 git clone https://github.com/sahilsingh682/drishti_security_Systems.git
-cd drishti_security_System
+cd drishti_security_systems
 ```
 
 ### 2. Install dependencies
@@ -177,7 +177,7 @@ drishti_security_Systems/
 - [ ] Technician live-location tracking during installation visits
 - [ ] Customer review & rating system
 
-See the [open issues](https://github.com/sahilsingh682/drishti_security_system/issues) for a full list of proposed features and known issues.
+See the [open issues](https://github.com/sahilsingh682/drishti_security_systems/issues) for a full list of proposed features and known issues.
 
 ---
 
@@ -203,7 +203,7 @@ Distributed under the MIT License. See [`LICENSE`](./LICENSE) for more informati
 
 **Sahil Singh** — [@sahilsingh682](https://github.com/sahilsingh682)
 
-Project Link: [https://github.com/sahilsingh682/drishti_security_system](https://github.com/sahilsingh682/drishti_security_system)
+Project Link: [https://github.com/sahilsingh682/drishti_security_systems](https://github.com/sahilsingh682/drishti_security_systems)
 
 LinkedIn: [linkedin.com/in/sahilsingh0521](https://www.linkedin.com/in/sahilsingh0521)
 
