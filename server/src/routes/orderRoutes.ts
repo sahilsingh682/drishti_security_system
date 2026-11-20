@@ -1,5 +1,5 @@
 import express from 'express';
-import { createOrder, verifyPayment, updateOrderStatus } from '../controllers/OrderController';
+import { createOrder, verifyPayment} from '../controllers/OrderController';
 
 const router = express.Router();
 
@@ -11,6 +11,6 @@ router.post('/verify-payment', verifyPayment);
 // Note: In a production environment, you would add an admin authentication middleware here!
 // router.put('/:orderId/status', updateOrderStatus);
 
-router.put('/:orderId/status', requireStaffRole, updateOrderStatus);
+
 
 export default router;
