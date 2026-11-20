@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ Drishti Security System
+# 🛡️ Drishti Security Systems
 **Enterprise-Grade Surveillance & Security E-Commerce Platform**
 
 [![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
@@ -46,7 +46,7 @@ An end-to-end full-stack e-commerce and operations management platform engineere
 - **Real-Time Analytics Dashboard** — High-level metrics visualization (Revenue, Pending Installs, Low Stock) powered by Recharts.
 - **Order Pipeline Management** — Full lifecycle control: verify payments, schedule installations, generate instant GST invoices, and log manual "Walk-in" orders.
 - **Technician Portal** — Mobile-optimized views for on-ground staff to update installation statuses on the fly.
-- **Content Management System (CMS)** — Full CRUD capabilities with secure image bucket uploads for managing inventory and custom security packages.
+- **Content Management Systems (CMS)** — Full CRUD capabilities with secure image bucket uploads for managing inventory and custom security packages.
 
 ---
 
@@ -88,8 +88,8 @@ An end-to-end full-stack e-commerce and operations management platform engineere
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/sahilsingh682/drishti_security_system.git
-cd drishti_security_system
+git clone https://github.com/sahilsingh682/drishti_security_Systems.git
+cd drishti_security_System
 ```
 
 ### 2. Install dependencies
@@ -144,7 +144,7 @@ The app should now be running at `http://localhost:5173` (client) and `http://lo
 ## 📁 Project Structure
 
 ```
-drishti_security_system/
+drishti_security_Systems/
 ├── client/                 # React + Vite frontend
 │   ├── src/
 │   │   ├── components/     # Reusable UI components
