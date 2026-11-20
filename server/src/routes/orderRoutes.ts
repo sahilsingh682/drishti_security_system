@@ -9,6 +9,8 @@ router.post('/verify-payment', verifyPayment);
 
 // Admin / Technician facing routes
 // Note: In a production environment, you would add an admin authentication middleware here!
-router.put('/:orderId/status', updateOrderStatus);
+// router.put('/:orderId/status', updateOrderStatus);
+
+router.put('/:orderId/status', requireStaffRole, updateOrderStatus);
 
 export default router;
